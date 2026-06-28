@@ -4,11 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
-export default function TrackScreen() {
+export default function CalendarScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.inner}>
-        <ThemedText type="title">Track</ThemedText>
+        <ThemedText type="title">Calendar</ThemedText>
       </SafeAreaView>
     </ThemedView>
   );

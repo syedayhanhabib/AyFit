@@ -105,6 +105,9 @@ Starter glossary content:
 - Progressive overload — "Gradually doing more over time (more weight, more reps, or more
   sets) so your muscles keep adapting. The core driver of progress."
 - Volume — "Total work done, roughly weight x reps x sets. A key driver of muscle growth."
+- Warm-up set — "Lighter preparatory sets done before your real working sets. Logged for
+  completeness, but excluded from progress tracking (e1RM, volume, PRs) so easy sets don't
+  skew your numbers."
 
 ## v1 scope (MVP)
 

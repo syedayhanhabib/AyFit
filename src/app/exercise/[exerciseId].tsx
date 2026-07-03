@@ -13,6 +13,9 @@ import {
 } from 'react-native';
 
 import { EXERCISES } from '@/constants/exercises';
+import { bestE1rm } from '@/utils/e1rm';
+import { InfoTip } from '@/components/info-tip';
+import type { GlossaryTermKey } from '@/constants/glossary';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useTheme } from '@/hooks/use-theme';
@@ -52,6 +55,7 @@ export default function ExerciseScreen() {
   const rpe = parseValidRpe(rpeInput);
   const isValid = weight !== undefined && reps !== undefined && rpe !== undefined;
   const hasInput = weightInput !== '' || repsInput !== '' || rpeInput !== '';
+  const e1rm = bestE1rm(sets);
 
   function handleAddSet() {
     if (!exercise || weight === undefined || reps === undefined || rpe === undefined) return;
@@ -86,11 +90,20 @@ export default function ExerciseScreen() {
                     <ThemedText type="default" themeColor="textSecondary">x</ThemedText>
                     <NumberField label="Reps" value={repsInput} onChangeText={setRepsInput} keyboardType="number-pad" />
                     <ThemedText type="default" themeColor="textSecondary">@ RPE</ThemedText>
-                    <NumberField label="RPE" value={rpeInput} onChangeText={setRpeInput} keyboardType="decimal-pad" />
+                    <NumberField
+                      label="RPE"
+                      value={rpeInput}
+                      onChangeText={setRpeInput}
+                      keyboardType="decimal-pad"
+                      labelInfoTerm="rpe"
+                    />
                   </View>
 
                   <View style={styles.warmupRow}>
-                    <ThemedText type="default">Warm-up set</ThemedText>
+                    <View style={styles.fieldLabelRow}>
+                      <ThemedText type="default">Warm-up set</ThemedText>
+                      <InfoTip term="warmUp" />
+                    </View>
                     <Switch value={isWarmup} onValueChange={setIsWarmup} />
                   </View>
 
@@ -114,6 +127,15 @@ export default function ExerciseScreen() {
                     </ThemedText>
                   </Pressable>
                 </View>
+
+                {e1rm !== undefined && (
+                  <View style={styles.e1rmRow}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Best e1RM this session: {e1rm.toFixed(1)}kg
+                    </ThemedText>
+                    <InfoTip term="e1rm" />
+                  </View>
+                )}
 
                 <View style={styles.list}>
                   {sets.map((set, index) => (
@@ -151,14 +173,18 @@ type NumberFieldProps = {
   value: string;
   onChangeText: (text: string) => void;
   keyboardType: 'decimal-pad' | 'number-pad';
+  labelInfoTerm?: GlossaryTermKey;
 };
 
-function NumberField({ label, value, onChangeText, keyboardType }: NumberFieldProps) {
+function NumberField({ label, value, onChangeText, keyboardType, labelInfoTerm }: NumberFieldProps) {
   const theme = useTheme();
 
   return (
     <View style={styles.field}>
-      <ThemedText type="small" themeColor="textSecondary">{label}</ThemedText>
+      <View style={styles.fieldLabelRow}>
+        <ThemedText type="small" themeColor="textSecondary">{label}</ThemedText>
+        {labelInfoTerm && <InfoTip term={labelInfoTerm} />}
+      </View>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -178,6 +204,7 @@ const styles = StyleSheet.create({
   entry: { gap: Spacing.two },
   fieldRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.two },
   field: { gap: Spacing.one },
+  fieldLabelRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   input: {
     minWidth: 56,
     borderRadius: Spacing.two,
@@ -199,4 +226,5 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   setLabel: { flex: 1 },
+  e1rmRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
 });

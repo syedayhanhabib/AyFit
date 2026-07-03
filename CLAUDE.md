@@ -1,5 +1,3 @@
-@AGENTS.md
-
 # AyFit — Project Foundation
 
 **AyFit** — a personal-first progressive overload tracker, built by Ayhan.
@@ -125,4 +123,6 @@ OUT (roadmap):
 - Supersets, drop sets, rest timer
 
 ## Build conventions (fill in as we go)
+- Expo has changed significantly since training data — read the versioned docs at
+  https://docs.expo.dev/versions/v56.0.0/ before writing any Expo code.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

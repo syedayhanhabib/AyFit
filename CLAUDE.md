@@ -70,8 +70,8 @@ Formula (Epley): `e1RM = weight_kg * (1 + reps / 30)`
 
 ### Track (build first)
 The core loop. Everything else is useless without it.
-`Pick muscle → pick exercise (recents float to top) → enter # of sets →
- per set: weight (kg) x reps @ RPE → save`
+`Pick muscle → pick exercise (recents float to top) → per set:
+ weight (kg) x reps @ RPE, added as you go → save`
 
 ### Summary
 Glanceable, top to bottom in priority order:

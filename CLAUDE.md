@@ -128,4 +128,8 @@ OUT (roadmap):
 ## Build conventions (fill in as we go)
 - Expo has changed significantly since training data — read the versioned docs at
   https://docs.expo.dev/versions/v56.0.0/ before writing any Expo code.
+- Supabase env vars use the `EXPO_PUBLIC_` prefix (`EXPO_PUBLIC_SUPABASE_URL`,
+  `EXPO_PUBLIC_SUPABASE_ANON_KEY`) so Expo inlines them at build time. `.env` is
+  gitignored and never committed; `.env.example` is the template — copy it to `.env`
+  and fill in real values from Supabase Project Settings -> API.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

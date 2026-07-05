@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,7 +13,8 @@ import {
   View,
 } from 'react-native';
 
-import { EXERCISES } from '@/constants/exercises';
+import { fetchExerciseById } from '@/lib/exercises-repo';
+import type { Exercise } from '@/types/exercise';
 import { bestE1rm } from '@/utils/e1rm';
 import { InfoTip } from '@/components/info-tip';
 import type { GlossaryTermKey } from '@/constants/glossary';
@@ -38,9 +40,30 @@ function parseValidRpe(input: string): number | undefined {
 }
 
 export default function ExerciseScreen() {
-  const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
-  const exercise = EXERCISES.find(item => item.id === exerciseId);
+  const { exerciseId, name } = useLocalSearchParams<{ exerciseId: string; name?: string }>();
+  const [fetchedExercise, setFetchedExercise] = useState<Exercise | null>(null);
+  const [isLoading, setIsLoading] = useState(!name);
+  const exercise: Exercise | undefined = name ? { id: exerciseId, name } : (fetchedExercise ?? undefined);
   const theme = useTheme();
+
+  // Deep-link fallback: the category list screen normally passes `name` so no fetch is needed.
+  useEffect(() => {
+    if (name || !exerciseId) return;
+    let cancelled = false;
+    fetchExerciseById(exerciseId)
+      .then(result => {
+        if (!cancelled) setFetchedExercise(result);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedExercise(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [exerciseId, name]);
 
   // Local to this screen session only — lost on unmount. Supabase persistence is a later step.
   const [sets, setSets] = useState<LoggedSet[]>([]);
@@ -78,7 +101,9 @@ export default function ExerciseScreen() {
       <ThemedView style={styles.container}>
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.select({ ios: 'padding', default: undefined })}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            {!exercise ? (
+            {isLoading ? (
+              <ActivityIndicator color={theme.textSecondary} />
+            ) : !exercise ? (
               <ThemedText type="default" themeColor="textSecondary">
                 Exercise not found
               </ThemedText>

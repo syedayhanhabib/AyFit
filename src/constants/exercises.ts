@@ -1,5 +1,12 @@
 import type { Category } from '@/constants/categories';
 
+/**
+ * @deprecated Hardcoded exercise list, superseded by src/lib/exercises-repo.ts
+ * (Supabase-backed). No longer imported by any screen as of Step 5c-i.
+ * `sortExercises` now also lives (as a generic) in exercises-repo.ts — it exists
+ * in both files until this one is deleted. Remove this file once confirmed
+ * nothing else references it.
+ */
 export type Exercise = {
   id: string;
   name: string;

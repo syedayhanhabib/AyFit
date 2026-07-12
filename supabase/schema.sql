@@ -39,6 +39,10 @@ create table if not exists session (
   -- at the session level, not per-set.
 );
 
+-- One session per calendar day (single-user v1). Once user_id lands above,
+-- this becomes a composite unique index on (user_id, date) instead.
+create unique index if not exists session_one_per_day on session (date);
+
 -- -----------------------------------------------------------------------------
 -- workout_set
 -- Maps to CLAUDE.md's `set` entity — renamed because "set" is a reserved

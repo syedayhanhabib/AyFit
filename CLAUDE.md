@@ -1,5 +1,23 @@
 # AyFit — Project Foundation
 
+## Current state
+_Last updated: 2026-07-13_
+
+- **Last commit:** da07d46 (schema: one-session-per-day unique index)
+- **Pushed:** yes, origin/master
+- **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
+  → per-set logging → writes persist to Supabase (sessions + sets).
+  Glossary/InfoTip system in place. Session lifecycle = lazy, one-per-day.
+- **Next:** Step 5c-iii — read back an existing session's sets on screen-open
+  (reopening an exercise mid-session currently shows blank; sets already
+  logged today should appear).
+- **Then:** design pass (pick ONE tool — Stitch or Claude Design — commit
+  DESIGN.md) → Summary tab → auth+RLS → EAS Build/APK.
+- **Parking lot:** [new feature ideas go here, NOT into v1]
+
+Rule going forward: update the "_Last updated_" line and these bullets at the
+end of each session. This section is the source of truth for "where am I."
+
 **AyFit** — a personal-first progressive overload tracker, built by Ayhan.
 A gym app for logging workouts and measuring progressive overload.
 Built freestyle-first: you create each workout on the fly, no fixed templates.

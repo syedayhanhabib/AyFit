@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 
 import { fetchExerciseById } from '@/lib/exercises-repo';
+import { getOrCreateTodaySession } from '@/lib/session-repo';
+import { deleteSet, insertSet } from '@/lib/workout-set-repo';
 import type { Exercise } from '@/types/exercise';
 import { bestE1rm } from '@/utils/e1rm';
 import { InfoTip } from '@/components/info-tip';
@@ -65,13 +67,15 @@ export default function ExerciseScreen() {
     };
   }, [exerciseId, name]);
 
-  // Local to this screen session only — lost on unmount. Supabase persistence is a later step.
+  // Local to this screen session only — lost on unmount; sets themselves are persisted to Supabase on save.
   const [sets, setSets] = useState<LoggedSet[]>([]);
   const [weightInput, setWeightInput] = useState('');
   const [repsInput, setRepsInput] = useState('');
   const [rpeInput, setRpeInput] = useState('');
   const [isWarmup, setIsWarmup] = useState(false);
-  const nextId = useRef(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const weight = parseValidWeight(weightInput);
   const reps = parseValidReps(repsInput);
@@ -80,19 +84,39 @@ export default function ExerciseScreen() {
   const hasInput = weightInput !== '' || repsInput !== '' || rpeInput !== '';
   const e1rm = bestE1rm(sets);
 
-  function handleAddSet() {
+  async function handleAddSet() {
     if (!exercise || weight === undefined || reps === undefined || rpe === undefined) return;
 
-    setSets(prev => [
-      ...prev,
-      { id: String(nextId.current++), exerciseId: exercise.id, weightKg: weight, reps, rpe, isWarmup },
-    ]);
-    // Keep weight/reps/RPE so repeating a set is one tap; warm-up resets to its off default.
-    setIsWarmup(false);
+    setSaveError(null);
+    setIsSaving(true);
+    try {
+      const sessionId = await getOrCreateTodaySession();
+      const id = await insertSet({
+        sessionId,
+        exerciseId: exercise.id,
+        weightKg: weight,
+        reps,
+        rpe,
+        isWarmup,
+      });
+      setSets(prev => [...prev, { id, exerciseId: exercise.id, weightKg: weight, reps, rpe, isWarmup }]);
+      // Keep weight/reps/RPE so repeating a set is one tap; warm-up resets to its off default.
+      setIsWarmup(false);
+    } catch {
+      setSaveError('Could not save set. Check your connection and try again.');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
-  function handleDeleteSet(id: string) {
-    setSets(prev => prev.filter(set => set.id !== id));
+  async function handleDeleteSet(id: string) {
+    setDeleteError(null);
+    try {
+      await deleteSet(id);
+      setSets(prev => prev.filter(set => set.id !== id));
+    } catch {
+      setDeleteError('Could not delete set. Try again.');
+    }
   }
 
   return (
@@ -138,20 +162,32 @@ export default function ExerciseScreen() {
                     </ThemedText>
                   )}
 
+                  {saveError && (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {saveError}
+                    </ThemedText>
+                  )}
+
                   <Pressable
                     onPress={handleAddSet}
-                    disabled={!isValid}
+                    disabled={!isValid || isSaving}
                     style={({ pressed }) => [
                       styles.addButton,
-                      { backgroundColor: isValid ? theme.backgroundSelected : theme.backgroundElement },
-                      pressed && isValid && styles.pressed,
+                      { backgroundColor: isValid && !isSaving ? theme.backgroundSelected : theme.backgroundElement },
+                      pressed && isValid && !isSaving && styles.pressed,
                     ]}
                   >
-                    <ThemedText type="smallBold" themeColor={isValid ? 'text' : 'textSecondary'}>
-                      Add set
+                    <ThemedText type="smallBold" themeColor={isValid && !isSaving ? 'text' : 'textSecondary'}>
+                      {isSaving ? 'Saving…' : 'Add set'}
                     </ThemedText>
                   </Pressable>
                 </View>
+
+                {deleteError && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {deleteError}
+                  </ThemedText>
+                )}
 
                 {e1rm !== undefined && (
                   <View style={styles.e1rmRow}>

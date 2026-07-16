@@ -14,8 +14,8 @@ import {
 } from 'react-native';
 
 import { fetchExerciseById } from '@/lib/exercises-repo';
-import { getOrCreateTodaySession } from '@/lib/session-repo';
-import { deleteSet, insertSet } from '@/lib/workout-set-repo';
+import { getOrCreateTodaySession, getTodaySession } from '@/lib/session-repo';
+import { deleteSet, fetchSetsForSession, insertSet } from '@/lib/workout-set-repo';
 import type { Exercise } from '@/types/exercise';
 import { bestE1rm } from '@/utils/e1rm';
 import { InfoTip } from '@/components/info-tip';
@@ -69,6 +69,8 @@ export default function ExerciseScreen() {
 
   // Local to this screen session only — lost on unmount; sets themselves are persisted to Supabase on save.
   const [sets, setSets] = useState<LoggedSet[]>([]);
+  const [isLoadingSets, setIsLoadingSets] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [weightInput, setWeightInput] = useState('');
   const [repsInput, setRepsInput] = useState('');
   const [rpeInput, setRpeInput] = useState('');
@@ -76,6 +78,32 @@ export default function ExerciseScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const resolvedExerciseId = exercise?.id;
+
+  // Read-back: populate already-logged sets for this exercise when today's session exists.
+  // getTodaySession() never creates a row, so merely opening this screen can't spawn a phantom session.
+  useEffect(() => {
+    if (!resolvedExerciseId) return;
+    let cancelled = false;
+    (async () => {
+      const sessionId = await getTodaySession();
+      if (!sessionId) return [];
+      return fetchSetsForSession(sessionId, resolvedExerciseId);
+    })()
+      .then(result => {
+        if (!cancelled) setSets(result);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError('Could not load today’s sets for this exercise.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingSets(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedExerciseId]);
 
   const weight = parseValidWeight(weightInput);
   const reps = parseValidReps(repsInput);
@@ -189,6 +217,12 @@ export default function ExerciseScreen() {
                   </ThemedText>
                 )}
 
+                {loadError && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {loadError}
+                  </ThemedText>
+                )}
+
                 {e1rm !== undefined && (
                   <View style={styles.e1rmRow}>
                     <ThemedText type="small" themeColor="textSecondary">
@@ -199,6 +233,7 @@ export default function ExerciseScreen() {
                 )}
 
                 <View style={styles.list}>
+                  {isLoadingSets && <ActivityIndicator color={theme.textSecondary} />}
                   {sets.map((set, index) => (
                     <View key={set.id} style={[styles.setRow, { backgroundColor: theme.backgroundElement }]}>
                       {/* Warm-up sets still get a number but are excluded from e1RM/volume math per CLAUDE.md. */}

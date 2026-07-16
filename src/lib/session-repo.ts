@@ -47,3 +47,21 @@ export async function getOrCreateTodaySession(): Promise<string> {
   }
   return cachedSessionPromise;
 }
+
+// Read-only: never creates a session. Used for read-back so merely opening
+// an exercise screen can't spawn a session row for a day nothing was logged.
+export async function getTodaySession(): Promise<string | null> {
+  const date = todayLocalDate();
+  if (cachedDate === date && cachedSessionPromise) {
+    return cachedSessionPromise;
+  }
+
+  const { data, error } = await supabase.from('session').select('id').eq('date', date).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  // Hydrate the cache so the first write after a read-back reuses this session.
+  cachedDate = date;
+  cachedSessionPromise = Promise.resolve(data.id);
+  return data.id;
+}

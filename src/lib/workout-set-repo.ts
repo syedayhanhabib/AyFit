@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import type { LoggedSet } from '@/types/logged-set';
 
 type InsertSetParams = {
   sessionId: string;
@@ -30,4 +31,25 @@ export async function insertSet(params: InsertSetParams): Promise<string> {
 export async function deleteSet(id: string): Promise<void> {
   const { error } = await supabase.from('workout_set').delete().eq('id', id);
   if (error) throw error;
+}
+
+export async function fetchSetsForSession(sessionId: string, exerciseId: string): Promise<LoggedSet[]> {
+  const { data, error } = await supabase
+    .from('workout_set')
+    .select('id, exercise_id, weight_kg, reps, rpe, is_warmup')
+    .eq('session_id', sessionId)
+    .eq('exercise_id', exerciseId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+
+  if (error) throw error;
+
+  return data.map(row => ({
+    id: row.id,
+    exerciseId: row.exercise_id,
+    weightKg: row.weight_kg,
+    reps: row.reps,
+    rpe: row.rpe,
+    isWarmup: row.is_warmup,
+  }));
 }

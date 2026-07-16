@@ -1,17 +1,18 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-13_
+_Last updated: 2026-07-17_
 
-- **Last commit:** da07d46 (schema: one-session-per-day unique index)
-- **Pushed:** yes, origin/master
+- **Last commit:** (pending — read-back feature, this session)
+- **Pushed:** not yet
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
-  → per-set logging → writes persist to Supabase (sessions + sets).
+  → per-set logging → writes persist to Supabase (sessions + sets) →
+  reopening an exercise mid-session now reads back today's already-logged
+  sets (Step 5c-iii). Read-back uses a read-only `getTodaySession()` that
+  never creates a session row — only a real write (`getOrCreateTodaySession`)
+  does that, so merely opening a screen can't spawn a phantom session.
   Glossary/InfoTip system in place. Session lifecycle = lazy, one-per-day.
-- **Next:** Step 5c-iii — read back an existing session's sets on screen-open
-  (reopening an exercise mid-session currently shows blank; sets already
-  logged today should appear).
-- **Then:** design pass (pick ONE tool — Stitch or Claude Design — commit
+- **Next:** design pass (pick ONE tool — Stitch or Claude Design — commit
   DESIGN.md) → Summary tab → auth+RLS → EAS Build/APK.
 - **Parking lot:** [new feature ideas go here, NOT into v1]
 

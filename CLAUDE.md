@@ -3,8 +3,8 @@
 ## Current state
 _Last updated: 2026-07-17_
 
-- **Last commit:** (pending — read-back feature, this session)
-- **Pushed:** not yet
+- **Last commit:** c42bb51 (read-back today's logged sets on screen-open)
+- **Pushed:** yes, origin/master
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
   reopening an exercise mid-session now reads back today's already-logged

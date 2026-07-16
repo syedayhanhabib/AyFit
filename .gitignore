@@ -40,3 +40,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local preview/dev tooling (machine-specific, not shared config)
+.claude/launch.json

@@ -13,7 +13,8 @@ import {
 
 import { fetchExerciseById } from '@/lib/exercises-repo';
 import { getOrCreateTodaySession, getTodaySession } from '@/lib/session-repo';
-import { deleteSet, fetchSetsForSession, insertSet } from '@/lib/workout-set-repo';
+import { deleteSet, fetchSetsForSession, getLastLoggedSet, insertSet } from '@/lib/workout-set-repo';
+import type { LastLoggedSet } from '@/lib/workout-set-repo';
 import type { Exercise } from '@/types/exercise';
 import { bestE1rm } from '@/utils/e1rm';
 import { InfoTip } from '@/components/info-tip';
@@ -24,10 +25,7 @@ import { StepperField } from '@/components/track/stepper-field';
 import { WarmupPill } from '@/components/track/warmup-pill';
 import { CategoryAccent, TrackColors, TrackFonts } from '@/constants/track-theme';
 import type { LoggedSet } from '@/types/logged-set';
-
-function fmt(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
-}
+import { fmt } from '@/utils/format-number';
 
 function parseValidWeight(input: string): number | undefined {
   const value = Number(input.replace(',', '.'));
@@ -78,6 +76,10 @@ export default function ExerciseScreen() {
   const [sets, setSets] = useState<LoggedSet[]>([]);
   const [isLoadingSets, setIsLoadingSets] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // undefined doubles as "haven't logged this before" once isLoadingSets is
+  // false — while still loading, it just means "not resolved yet" and the
+  // card stays hidden either way, but the two states are never conflated.
+  const [previousSet, setPreviousSet] = useState<LastLoggedSet | undefined>(undefined);
   const [weightInput, setWeightInput] = useState('');
   const [repsInput, setRepsInput] = useState('');
   const [rpeInput, setRpeInput] = useState('');
@@ -88,18 +90,25 @@ export default function ExerciseScreen() {
 
   const resolvedExerciseId = exercise?.id;
 
-  // Read-back: populate already-logged sets for this exercise when today's session exists.
-  // getTodaySession() never creates a row, so merely opening this screen can't spawn a phantom session.
+  // Read-back: populate already-logged sets for this exercise when today's session exists,
+  // plus the last time this exercise was logged (excluding today's own session — that's what
+  // the set ladder above already covers). getTodaySession() never creates a row, so merely
+  // opening this screen can't spawn a phantom session.
   useEffect(() => {
     if (!resolvedExerciseId) return;
     let cancelled = false;
     (async () => {
       const sessionId = await getTodaySession();
-      if (!sessionId) return [];
-      return fetchSetsForSession(sessionId, resolvedExerciseId);
+      return Promise.all([
+        sessionId ? fetchSetsForSession(sessionId, resolvedExerciseId) : [],
+        getLastLoggedSet(resolvedExerciseId, sessionId ?? undefined),
+      ]);
     })()
-      .then(result => {
-        if (!cancelled) setSets(result);
+      .then(([todaysSets, previous]) => {
+        if (!cancelled) {
+          setSets(todaysSets);
+          setPreviousSet(previous);
+        }
       })
       .catch(() => {
         if (!cancelled) setLoadError('Could not load today’s sets for this exercise.');
@@ -200,6 +209,15 @@ export default function ExerciseScreen() {
           ) : (
             <>
               <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+                {!isLoadingSets && previousSet && (
+                  <View style={styles.previousCard}>
+                    <Text style={styles.cardLabel}>Last time</Text>
+                    <Text style={styles.previousValue}>
+                      {fmt(previousSet.weightKg)}kg × {previousSet.reps} @ RPE {fmt(previousSet.rpe)}
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.e1rmCard}>
                   <View style={styles.e1rmLabelRow}>
                     <Text style={styles.cardLabel}>e1RM this session</Text>
@@ -321,6 +339,22 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     color: TrackColors.textMuted,
     textTransform: 'uppercase',
+  },
+  previousCard: {
+    backgroundColor: TrackColors.surface,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: TrackColors.border,
+    gap: 4,
+  },
+  previousValue: {
+    fontFamily: TrackFonts.numeralBold,
+    fontSize: 20,
+    lineHeight: 24,
+    color: TrackColors.text,
+    fontVariant: ['tabular-nums'],
   },
   e1rmCard: {
     backgroundColor: TrackColors.surface,

@@ -5,10 +5,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { TrackColors, TrackFonts } from '@/constants/track-theme';
 import type { LoggedSet } from '@/types/logged-set';
-
-function fmt(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
-}
+import { fmt } from '@/utils/format-number';
 
 type Props = { set: LoggedSet; index: number; onDelete: () => void };
 

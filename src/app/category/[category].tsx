@@ -5,21 +5,30 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fetchExercisesForCategory } from '@/lib/exercises-repo';
+import { getLastLoggedSet } from '@/lib/workout-set-repo';
+import type { LastLoggedSet } from '@/lib/workout-set-repo';
 import { BackButton } from '@/components/track/back-button';
 import { CategoryDot } from '@/components/track/category-dot';
 import { CategoryAccent, TrackColors, TrackFonts } from '@/constants/track-theme';
 import type { Exercise } from '@/types/exercise';
+import { fmt } from '@/utils/format-number';
+import { formatRelativeDate } from '@/utils/format-relative-date';
 
 export default function CategoryScreen() {
   const { category } = useLocalSearchParams<{ category: string }>();
   const accent = CategoryAccent[category as keyof typeof CategoryAccent] ?? TrackColors.brand;
   const [exercises, setExercises] = useState<Exercise[] | null>(null);
+  const [lastLoggedByExercise, setLastLoggedByExercise] = useState<Record<string, LastLoggedSet | undefined>>({});
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetchExercisesForCategory(category)
-      .then(result => {
+      .then(async result => {
+        // Browsing screen, not the logging screen — no excludeSessionId, "last
+        // logged" here means literally the last time, even if that was today.
+        const lastLogged = await Promise.all(result.map(exercise => getLastLoggedSet(exercise.id)));
         setError(null);
+        setLastLoggedByExercise(Object.fromEntries(result.map((exercise, i) => [exercise.id, lastLogged[i]])));
         setExercises(result);
       })
       .catch(() => setError('Could not load exercises. Check your connection and try again.'));
@@ -73,21 +82,35 @@ export default function CategoryScreen() {
             </View>
           ) : (
             <ScrollView contentContainerStyle={styles.list}>
-              {exercises.map((exercise, index) => (
-                <Pressable
-                  key={exercise.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/exercise/[exerciseId]',
-                      params: { exerciseId: exercise.id, name: exercise.name, category },
-                    })
-                  }
-                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                >
-                  <Text style={styles.rowLabel}>{exercise.name}</Text>
-                  <MaterialCommunityIcons name="chevron-right" size={18} color={TrackColors.textMuted} />
-                </Pressable>
-              ))}
+              {exercises.map((exercise, index) => {
+                const lastLogged = lastLoggedByExercise[exercise.id];
+                return (
+                  <Pressable
+                    key={exercise.id}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/exercise/[exerciseId]',
+                        params: { exerciseId: exercise.id, name: exercise.name, category },
+                      })
+                    }
+                    style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                  >
+                    <View style={styles.rowTextColumn}>
+                      <Text style={styles.rowLabel}>{exercise.name}</Text>
+                      {lastLogged && (
+                        <Text style={styles.rowSubtitle} numberOfLines={1}>
+                          <Text style={styles.rowSubtitleMono}>
+                            {fmt(lastLogged.weightKg)}kg × {lastLogged.reps}
+                          </Text>
+                          {' · '}
+                          {formatRelativeDate(lastLogged.sessionDate)}
+                        </Text>
+                      )}
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={18} color={TrackColors.textMuted} />
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           )}
         </SafeAreaView>
@@ -122,7 +145,10 @@ const styles = StyleSheet.create({
     borderTopColor: TrackColors.border,
   },
   rowPressed: { backgroundColor: TrackColors.surface },
-  rowLabel: { flex: 1, fontFamily: TrackFonts.uiSemiBold, fontSize: 16, color: TrackColors.text },
+  rowTextColumn: { flex: 1, minWidth: 0, gap: 2 },
+  rowLabel: { fontFamily: TrackFonts.uiSemiBold, fontSize: 16, color: TrackColors.text },
+  rowSubtitle: { fontFamily: TrackFonts.uiRegular, fontSize: 13, color: TrackColors.textSecondary },
+  rowSubtitleMono: { fontFamily: TrackFonts.numeralMedium, color: TrackColors.textSecondary },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
   emptyText: { fontFamily: TrackFonts.uiRegular, fontSize: 14, color: TrackColors.textSecondary, textAlign: 'center' },
   retryButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: TrackColors.surface },

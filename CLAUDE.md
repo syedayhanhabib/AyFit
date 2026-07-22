@@ -1,9 +1,9 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-17_
+_Last updated: 2026-07-22_
 
-- **Last commit:** c42bb51 (read-back today's logged sets on screen-open)
+- **Last commit:** 1a5f4e3 (redesign Track screens per DESIGN.md v3)
 - **Pushed:** yes, origin/master
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
@@ -12,9 +12,18 @@ _Last updated: 2026-07-17_
   never creates a session row — only a real write (`getOrCreateTodaySession`)
   does that, so merely opening a screen can't spawn a phantom session.
   Glossary/InfoTip system in place. Session lifecycle = lazy, one-per-day.
-- **Next:** design pass (pick ONE tool — Stitch or Claude Design — commit
-  DESIGN.md) → Summary tab → auth+RLS → EAS Build/APK.
-- **Parking lot:** [new feature ideas go here, NOT into v1]
+  Track's visual redesign (v3 color system, DESIGN.md) is complete and
+  pushed: dark palette + category accents + JetBrains Mono/Inter type scale
+  (`src/constants/track-theme.ts`, scoped to Track only), restyled muscle
+  picker/exercise list/logging screens, weight/reps/RPE steppers, custom
+  warm-up pill, plate-in set animation. Intentionally left out (no backing
+  data yet): previous-session card, last-logged subtitle, PR gold chip/flash.
+- **Next:** `getLastLoggedSet(exerciseId)` read-only query (most recent
+  working set for an exercise across past sessions, excl. warm-ups) to back
+  the previous-session card and last-logged subtitle — required by
+  DESIGN.md, not a nice-to-have. Then: Summary tab → auth+RLS → EAS Build/APK.
+- **Parking lot:** PR detection (all-time-best e1RM comparison + gold
+  chip/flash) — unimplemented, still on the roadmap, unchanged from before.
 
 Rule going forward: update the "_Last updated_" line and these bullets at the
 end of each session. This section is the source of truth for "where am I."

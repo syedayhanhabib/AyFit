@@ -53,3 +53,35 @@ export async function fetchSetsForSession(sessionId: string, exerciseId: string)
     isWarmup: row.is_warmup,
   }));
 }
+
+export type LastLoggedSet = { weightKg: number; reps: number; rpe: number; sessionDate: string };
+
+type LastLoggedSetRow = { weight_kg: number; reps: number; rpe: number; session: { date: string } };
+
+// Read-only, cross-session lookup for the "previous session" card — most recent
+// working set for this exercise, ever. excludeSessionId keeps today's own sets
+// (the session currently being logged) out of "previous".
+export async function getLastLoggedSet(
+  exerciseId: string,
+  excludeSessionId?: string,
+): Promise<LastLoggedSet | undefined> {
+  let query = supabase
+    .from('workout_set')
+    .select('weight_kg, reps, rpe, session!inner(date)')
+    .eq('exercise_id', exerciseId)
+    .eq('is_warmup', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (excludeSessionId) {
+    query = query.neq('session_id', excludeSessionId);
+  }
+
+  const { data, error } = await query.returns<LastLoggedSetRow[]>();
+
+  if (error) throw error;
+  if (data.length === 0) return undefined;
+
+  const row = data[0];
+  return { weightKg: row.weight_kg, reps: row.reps, rpe: row.rpe, sessionDate: row.session.date };
+}

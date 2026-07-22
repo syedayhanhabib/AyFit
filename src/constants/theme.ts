@@ -63,3 +63,54 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+// v3 design system tokens (per DESIGN.md) — dark, warm-charcoal palette,
+// category accent colors, and the JetBrains Mono/Inter type scale. Shared
+// across any screen that's had its v3 design pass (Track, Summary); screens
+// still on the original light/dark `Colors` above (Calendar, Profile) will
+// adopt these once they get their own pass.
+export const Palette = {
+  background: '#16181B',
+  surface: '#1F2226',
+  border: '#2A2E33',
+  text: '#EDEAE3',
+  textSecondary: '#8A8F94',
+  textMuted: '#55585C',
+  brand: '#B14EFF',
+  brandPressed: '#9A3AE0',
+  prGold: '#FFC738',
+} as const;
+
+export type CategoryName = 'Chest' | 'Back' | 'Arms' | 'Legs' | 'Shoulders';
+
+// Category color is an identifier, not a decoration — contained to the icon
+// glyph fill, a small dot, or (per Summary's volume chart) a bar/gradient
+// tied to that one category. Never a border/background tint on unrelated UI.
+export const CategoryAccent: Record<CategoryName, string> = {
+  Chest: '#FF3860',
+  Back: '#2EE6FF',
+  Arms: '#F5FF3D',
+  Legs: '#4CFF6B',
+  Shoulders: '#B14EFF',
+};
+
+export const Typefaces = {
+  numeralRegular: 'JetBrainsMono_400Regular',
+  numeralMedium: 'JetBrainsMono_500Medium',
+  numeralBold: 'JetBrainsMono_700Bold',
+  uiRegular: 'Inter_400Regular',
+  uiMedium: 'Inter_500Medium',
+  uiSemiBold: 'Inter_600SemiBold',
+  uiBold: 'Inter_700Bold',
+  uiExtraBold: 'Inter_800ExtraBold',
+} as const;
+
+export const TypeScale = {
+  numeralLg: { fontFamily: Typefaces.numeralBold, fontSize: 40, lineHeight: 44 },
+  numeralSm: { fontFamily: Typefaces.numeralBold, fontSize: 20, lineHeight: 24 },
+  h1: { fontFamily: Typefaces.uiBold, fontSize: 24, lineHeight: 32 },
+  body: { fontFamily: Typefaces.uiRegular, fontSize: 16, lineHeight: 24 },
+  caption: { fontFamily: Typefaces.uiMedium, fontSize: 13, lineHeight: 18 },
+} as const;
+
+export const MinTouchTarget = 48;

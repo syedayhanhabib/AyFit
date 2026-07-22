@@ -172,4 +172,10 @@ OUT (roadmap):
   `src/utils/` first — this project's convention is one shared copy, not
   per-file duplicates. (Caught twice on this: `fmt()` had drifted into
   three separate files before being unified into `format-number.ts`.)
+- Expo Go 56.0.1 (Android, current Play Store build) has a known bug
+  rejecting all SDK 56 projects ("incompatible version" error) —
+  confirmed root cause is a version-string comparison bug in the
+  client itself. Fix: sideload Expo Go 56.0.0 from
+  github.com/expo/expo-go-releases/releases/tag/Expo-Go-56.0.0 instead.
+  Watch for Play Store auto-update reintroducing 56.0.1.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

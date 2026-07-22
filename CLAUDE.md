@@ -3,7 +3,7 @@
 ## Current state
 _Last updated: 2026-07-22_
 
-- **Last commit:** 1a5f4e3 (redesign Track screens per DESIGN.md v3)
+- **Last commit:** b9f69f1 (wire getLastLoggedSet into logging and list screens)
 - **Pushed:** yes, origin/master
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
@@ -16,12 +16,19 @@ _Last updated: 2026-07-22_
   pushed: dark palette + category accents + JetBrains Mono/Inter type scale
   (`src/constants/track-theme.ts`, scoped to Track only), restyled muscle
   picker/exercise list/logging screens, weight/reps/RPE steppers, custom
-  warm-up pill, plate-in set animation. Intentionally left out (no backing
-  data yet): previous-session card, last-logged subtitle, PR gold chip/flash.
-- **Next:** `getLastLoggedSet(exerciseId)` read-only query (most recent
-  working set for an exercise across past sessions, excl. warm-ups) to back
-  the previous-session card and last-logged subtitle — required by
-  DESIGN.md, not a nice-to-have. Then: Summary tab → auth+RLS → EAS Build/APK.
+  warm-up pill, plate-in set animation. `getLastLoggedSet` read-only query
+  (workout-set-repo.ts) is live and wired into two screens: the per-set
+  logging screen (LAST TIME card, excludes today's session) and the
+  exercise list screen (per-row last-logged subtitle, no exclusion).
+  Shared formatters now live in `src/utils/`: `e1rm.ts`,
+  `format-relative-date.ts`, `format-number.ts` (`fmt` was deduplicated
+  from three separate local copies during this work). Still intentionally
+  left out (no backing data/logic yet): PR gold chip/flash.
+- **Next:** Summary tab design pass. Per DESIGN.md, this means a Claude
+  Design session against DESIGN.md's Phase 2 spec (Consistency, Recent
+  PRs, Progression, Volume by muscle sections), reviewed in chat before
+  Claude Code builds it. Not started yet. After Summary: auth + RLS,
+  then EAS Build/APK.
 - **Parking lot:** PR detection (all-time-best e1RM comparison + gold
   chip/flash) — unimplemented, still on the roadmap, unchanged from before.
 
@@ -160,4 +167,9 @@ OUT (roadmap):
   `EXPO_PUBLIC_SUPABASE_ANON_KEY`) so Expo inlines them at build time. `.env` is
   gitignored and never committed; `.env.example` is the template — copy it to `.env`
   and fill in real values from Supabase Project Settings -> API.
+- Before adding any small formatter/helper (number formatting, date
+  formatting, derived-value math) locally in a component file, check
+  `src/utils/` first — this project's convention is one shared copy, not
+  per-file duplicates. (Caught twice on this: `fmt()` had drifted into
+  three separate files before being unified into `format-number.ts`.)
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

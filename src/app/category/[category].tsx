@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fetchExercisesForCategory } from '@/lib/exercises-repo';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { useTheme } from '@/hooks/use-theme';
+import { BackButton } from '@/components/track/back-button';
+import { CategoryDot } from '@/components/track/category-dot';
+import { CategoryAccent, TrackColors, TrackFonts } from '@/constants/track-theme';
 import type { Exercise } from '@/types/exercise';
 
 export default function CategoryScreen() {
   const { category } = useLocalSearchParams<{ category: string }>();
-  const theme = useTheme();
+  const accent = CategoryAccent[category as keyof typeof CategoryAccent] ?? TrackColors.brand;
   const [exercises, setExercises] = useState<Exercise[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,77 +37,95 @@ export default function CategoryScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: category }} />
-      <ThemedView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.screen}>
         <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <View style={styles.header}>
+            <BackButton onPress={() => router.back()} />
+            <View style={styles.headerText}>
+              <View style={styles.titleRow}>
+                <CategoryDot color={accent} />
+                <Text style={styles.title}>{category}</Text>
+              </View>
+              <Text style={styles.eyebrow}>
+                {exercises === null ? '—' : `${exercises.length} exercises`}
+              </Text>
+            </View>
+          </View>
+
           {error ? (
-            <ThemedView style={styles.emptyState}>
-              <ThemedText type="default" themeColor="textSecondary">{error}</ThemedText>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{error}</Text>
               <Pressable
                 onPress={handleRetry}
-                style={({ pressed }) => [
-                  styles.retryButton,
-                  { backgroundColor: theme.backgroundElement },
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
               >
-                <ThemedText type="smallBold">Retry</ThemedText>
+                <Text style={styles.retryLabel}>Retry</Text>
               </Pressable>
-            </ThemedView>
+            </View>
           ) : exercises === null ? (
-            <ThemedView style={styles.emptyState}>
-              <ActivityIndicator color={theme.textSecondary} />
-            </ThemedView>
+            <View style={styles.emptyState}>
+              <ActivityIndicator color={TrackColors.textSecondary} />
+            </View>
           ) : exercises.length === 0 ? (
-            <ThemedView style={styles.emptyState}>
-              <ThemedText type="default" themeColor="textSecondary">
-                No exercises found for this category.
-              </ThemedText>
-            </ThemedView>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No exercises found for this category.</Text>
+            </View>
           ) : (
             <ScrollView contentContainerStyle={styles.list}>
-              {exercises.map(exercise => (
+              {exercises.map((exercise, index) => (
                 <Pressable
                   key={exercise.id}
                   onPress={() =>
                     router.push({
                       pathname: '/exercise/[exerciseId]',
-                      params: { exerciseId: exercise.id, name: exercise.name },
+                      params: { exerciseId: exercise.id, name: exercise.name, category },
                     })
                   }
-                  android_ripple={{ color: theme.backgroundSelected }}
-                  style={({ pressed }) => [
-                    styles.row,
-                    { backgroundColor: theme.backgroundElement },
-                    pressed && styles.pressed,
-                  ]}
+                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                 >
-                  <ThemedText type="default" style={styles.label}>{exercise.name}</ThemedText>
-                  <MaterialCommunityIcons name="chevron-right" size={22} color={theme.textSecondary} />
+                  <Text style={styles.rowLabel}>{exercise.name}</Text>
+                  <MaterialCommunityIcons name="chevron-right" size={18} color={TrackColors.textMuted} />
                 </Pressable>
               ))}
             </ScrollView>
           )}
         </SafeAreaView>
-      </ThemedView>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  screen: { flex: 1, backgroundColor: TrackColors.background },
   safeArea: { flex: 1 },
-  list: { padding: 16, gap: 12 },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  retryButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingBottom: 18, paddingTop: 4 },
+  headerText: { flex: 1, minWidth: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontFamily: TrackFonts.uiBold, fontSize: 22, color: TrackColors.text },
+  eyebrow: {
+    fontFamily: TrackFonts.numeralMedium,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    color: TrackColors.textMuted,
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+  list: { paddingBottom: 24 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 64,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 12,
+    minHeight: 68,
+    paddingHorizontal: 20,
+    borderTopWidth: 1,
+    borderTopColor: TrackColors.border,
   },
+  rowPressed: { backgroundColor: TrackColors.surface },
+  rowLabel: { flex: 1, fontFamily: TrackFonts.uiSemiBold, fontSize: 16, color: TrackColors.text },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
+  emptyText: { fontFamily: TrackFonts.uiRegular, fontSize: 14, color: TrackColors.textSecondary, textAlign: 'center' },
+  retryButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: TrackColors.surface },
+  retryLabel: { fontFamily: TrackFonts.uiBold, fontSize: 14, color: TrackColors.text },
   pressed: { opacity: 0.75 },
-  label: { flex: 1 },
 });

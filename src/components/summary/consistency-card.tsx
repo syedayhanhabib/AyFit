@@ -1,55 +1,77 @@
+import { useEffect, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { getConsistency } from '@/lib/summary-repo';
 import { Palette, Typefaces } from '@/constants/theme';
 import { hexToRgba } from '@/utils/hex-to-rgba';
 
 const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const ALL_FALSE_WEEK = [false, false, false, false, false, false, false];
 
-// Placeholder — real source is a follow-up: sessions logged this calendar
-// week (Mon-Sun) and consecutive weeks with >=1 session.
-const SESSIONS_THIS_WEEK = 4;
-const STREAK_WEEKS = 6;
-const COMPLETED_DAYS = [true, true, false, true, false, true, false];
+type Consistency = { sessionsThisWeek: number; weeklyStreak: number; completedDays: boolean[] };
 
 export function ConsistencyCard() {
+  // null = not yet fetched.
+  const [consistency, setConsistency] = useState<Consistency | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getConsistency()
+      .then(result => {
+        if (!cancelled) setConsistency(result);
+      })
+      .catch(() => {
+        if (!cancelled) setConsistency({ sessionsThisWeek: 0, weeklyStreak: 0, completedDays: ALL_FALSE_WEEK });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Consistency</Text>
 
-      <View style={styles.statsRow}>
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>Sessions this week</Text>
-          <View style={styles.statValueRow}>
-            <Text style={styles.statValue}>{SESSIONS_THIS_WEEK}</Text>
-            <Text style={styles.statUnit}>/7 days</Text>
+      {consistency === null ? (
+        <ActivityIndicator color={Palette.textSecondary} style={styles.loading} />
+      ) : (
+        <>
+          <View style={styles.statsRow}>
+            <View style={styles.stat}>
+              <Text style={styles.statLabel}>Sessions this week</Text>
+              <View style={styles.statValueRow}>
+                <Text style={styles.statValue}>{consistency.sessionsThisWeek}</Text>
+                <Text style={styles.statUnit}>/7 days</Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.stat}>
+              <Text style={styles.statLabel}>Streak</Text>
+              <View style={styles.statValueRow}>
+                <Text style={styles.statValue}>{consistency.weeklyStreak}</Text>
+                <Text style={styles.statUnit}>{consistency.weeklyStreak === 1 ? 'week' : 'weeks'}</Text>
+              </View>
+            </View>
           </View>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>Streak</Text>
-          <View style={styles.statValueRow}>
-            <Text style={styles.statValue}>{STREAK_WEEKS}</Text>
-            <Text style={styles.statUnit}>weeks</Text>
-          </View>
-        </View>
-      </View>
 
-      <View style={styles.ledgerRow}>
-        {DAY_LETTERS.map((letter, i) => (
-          <View key={i} style={styles.ledgerColumn}>
-            {COMPLETED_DAYS[i] ? (
-              <LinearGradient
-                colors={[Palette.brand, hexToRgba(Palette.brand, 0.35)]}
-                style={styles.ledgerBarFilled}
-              />
-            ) : (
-              <View style={styles.ledgerBarEmpty} />
-            )}
-            <Text style={styles.ledgerLabel}>{letter}</Text>
+          <View style={styles.ledgerRow}>
+            {DAY_LETTERS.map((letter, i) => (
+              <View key={i} style={styles.ledgerColumn}>
+                {consistency.completedDays[i] ? (
+                  <LinearGradient
+                    colors={[Palette.brand, hexToRgba(Palette.brand, 0.35)]}
+                    style={styles.ledgerBarFilled}
+                  />
+                ) : (
+                  <View style={styles.ledgerBarEmpty} />
+                )}
+                <Text style={styles.ledgerLabel}>{letter}</Text>
+              </View>
+            ))}
           </View>
-        ))}
-      </View>
+        </>
+      )}
     </View>
   );
 }
@@ -63,6 +85,7 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   title: { fontFamily: Typefaces.uiBold, fontSize: 16, color: Palette.text, marginBottom: 16 },
+  loading: { paddingVertical: 32 },
   statsRow: { flexDirection: 'row', alignItems: 'stretch' },
   stat: { flex: 1 },
   statLabel: {

@@ -1,9 +1,9 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-22_
+_Last updated: 2026-07-23_
 
-- **Last commit:** b9f69f1 (wire getLastLoggedSet into logging and list screens)
+- **Last commit:** e907fad (wire real Progression data into progression-card.tsx)
 - **Pushed:** yes, origin/master
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
@@ -22,15 +22,39 @@ _Last updated: 2026-07-22_
   exercise list screen (per-row last-logged subtitle, no exclusion).
   Shared formatters now live in `src/utils/`: `e1rm.ts`,
   `format-relative-date.ts`, `format-number.ts` (`fmt` was deduplicated
-  from three separate local copies during this work). Still intentionally
-  left out (no backing data/logic yet): PR gold chip/flash.
-- **Next:** Summary tab design pass. Per DESIGN.md, this means a Claude
-  Design session against DESIGN.md's Phase 2 spec (Consistency, Recent
-  PRs, Progression, Volume by muscle sections), reviewed in chat before
-  Claude Code builds it. Not started yet. After Summary: auth + RLS,
-  then EAS Build/APK.
-- **Parking lot:** PR detection (all-time-best e1RM comparison + gold
-  chip/flash) — unimplemented, still on the roadmap, unchanged from before.
+  from three separate local copies during this work).
+  **Summary tab is built and mostly wired to real data.** UI shell
+  (v3 tokens) has all four sections in DESIGN.md's Phase 2 order —
+  Consistency, Volume by muscle, Progression, Recent PRs — sharing the
+  same `Palette`/`Typefaces`/`TypeScale`/`CategoryAccent` tokens now
+  hoisted from `track-theme.ts` into `constants/theme.ts` (`track-theme.ts`
+  is a thin re-export shim so Track's own files needed no changes).
+  Progression is fully wired: `getExercisesWithHistory` +
+  `getE1rmHistory` (workout-set-repo.ts) drive real exercise chips
+  (most-recently-logged first, that's the real default selection now,
+  not a hardcoded name), the chart math itself (Catmull-Rom smoothing,
+  range filtering) is unchanged from the design mock, verified live
+  on-device. Volume by muscle is fully wired: `getVolumeByMuscle` (new
+  `src/lib/summary-repo.ts`) always returns all five categories
+  zero-filled, guarded against divide-by-zero on an all-zero week
+  (verified against a genuine all-zero current week live). New shared
+  util `getCurrentWeekRange()` (`src/utils/week-range.ts`) computes the
+  Monday-Sunday boundary Volume uses now and Consistency will reuse next.
+  Consistency and Recent PRs cards are still on placeholder data.
+- **Next:** Consistency query — sessions this week + weekly streak count,
+  via `getCurrentWeekRange()` — then wire into `consistency-card.tsx`,
+  same pattern as Volume/Progression (data-layer task, tested against
+  dev DB, reviewed, then a separate UI-wiring task). After that: PR
+  detection — the last and biggest of the four Summary data tasks, and
+  it feeds two places at once (Summary's Recent PRs card here, and
+  Track's still-deferred PR gold chip/flash from months back). Treat it
+  as its own design discussion before scoping as a routine query —
+  open questions include computed-live vs. stored all-time-best per
+  exercise, and what "just happened" means for a one-time flash vs.
+  a historical PR shown in a list. After Summary is fully wired: auth +
+  RLS, then EAS Build/APK.
+- **Parking lot:** (empty — PR detection moved to Next since it's now
+  properly scoped as the next real task, not a someday item.)
 
 Rule going forward: update the "_Last updated_" line and these bullets at the
 end of each session. This section is the source of truth for "where am I."
@@ -178,4 +202,10 @@ OUT (roadmap):
   client itself. Fix: sideload Expo Go 56.0.0 from
   github.com/expo/expo-go-releases/releases/tag/Expo-Go-56.0.0 instead.
   Watch for Play Store auto-update reintroducing 56.0.1.
+- When filtering on a column inside a Postgrest embedded join (e.g.
+  exercise -> muscle, workout_set -> session), use `!inner` on that
+  join. Without it, a failing filter nulls the embed instead of
+  excluding the row, silently including non-matching top-level rows.
+  (Caught in an ad-hoc verification script during Volume work — the
+  shipped `getVolumeByMuscle` already used `!inner` correctly.)
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

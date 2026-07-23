@@ -3,7 +3,7 @@
 ## Current state
 _Last updated: 2026-07-23_
 
-- **Last commit:** 6ef4d8a (wire getConsistency() into consistency-card.tsx)
+- **Last commit:** cc42a13 (add PR detection: getRecentPRs() for Summary's Recent PRs card)
 - **Pushed:** yes, origin/master
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
@@ -56,19 +56,36 @@ _Last updated: 2026-07-23_
   streak, empty history, a mixed trained/untrained week) plus a live
   read-only smoke test against the dev DB, then click-through on-device
   including a forced-error fallback check.
-  **Consistency, Volume, and Progression are all fully wired now —
-  Recent PRs is the only Summary card still on placeholder data.**
-- **Next:** PR detection — the last of the four Summary data tasks, and
-  it feeds two places at once (Summary's Recent PRs card here, and
-  Track's still-deferred PR gold chip/flash from months back). This is
-  its own design discussion before any scoping/prompt-writing, not a
-  routine query — open questions: computed-live-per-view vs. stored
-  all-time-best per exercise (and, if stored, what invalidates a stored
-  value if editing/deleting past sets is ever allowed); and separately,
-  what "just happened" means for Track's one-time gold-flash moment vs.
-  a PR that just needs to show up correctly in Summary's list days or
-  weeks later. After Summary is fully wired: auth + RLS, then EAS
-  Build/APK.
+  **Consistency, Volume, and Progression are all fully wired now.**
+  PR detection's data layer is done, for Summary only: `pr-detection.ts`
+  exports a pure `detectPrSessions()` (no Supabase) — per exercise,
+  chronologically sorted, skip the first-ever session (nothing earned
+  yet to beat), emit an event wherever a later session's e1RM strictly
+  exceeds the running max so far. `getRecentPRs(limit = 5)`
+  (`summary-repo.ts`) is a single query joining `workout_set` to
+  `exercise`/`session`, reduces to one best-e1RM entry per
+  exercise-per-session, feeds that into `detectPrSessions()`, sorts
+  descending by date, slices to `limit`. Computed live every call, no
+  stored best-value/PR columns anywhere — same philosophy as e1RM and
+  Volume, and specifically chosen so a deleted set can never leave a
+  stale stored value behind. Recency-capped (most recent N PR-setting
+  sessions), not time-windowed, so the card doesn't go blank on a slow
+  stretch. An exercise's very first-ever session is never a PR by
+  design — verified against 6 synthetic cases (single session, strictly
+  increasing, exact tie, dip-then-re-break, more events than `limit`,
+  empty history) plus a live read-only smoke test.
+  **Scope note: this covers Summary's Recent PRs card only.**
+  `pr-card.tsx` itself is not yet wired — still on placeholder data.
+  Track's live gold-flash moment (per-set comparison against the
+  running max of every prior set for that exercise, no session-grouping
+  needed there) is a separate, still-deferred task — this work didn't
+  touch Track at all.
+- **Next:** Wire `getRecentPRs()` into `pr-card.tsx` — the UI-wiring
+  half, same pattern as Volume/Progression/Consistency. Once that's
+  done, all four Summary cards are fully wired and Summary is complete.
+  After that: Track's deferred PR gold-flash/chip (per-set live
+  comparison, separate from Summary's per-session history), then auth +
+  RLS, then EAS Build/APK.
 - **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
   `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
   shared `src/utils/local-date.ts`. Not urgent — each is currently used

@@ -3,8 +3,8 @@
 ## Current state
 _Last updated: 2026-07-23_
 
-- **Last commit:** 3c8bb74 (add getConsistency() query for sessions-this-week and weekly streak)
-- **Pushed:** not yet
+- **Last commit:** 6ef4d8a (wire getConsistency() into consistency-card.tsx)
+- **Pushed:** yes, origin/master
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
   reopening an exercise mid-session now reads back today's already-logged
@@ -40,27 +40,35 @@ _Last updated: 2026-07-23_
   (verified against a genuine all-zero current week live). New shared
   util `getCurrentWeekRange()` (`src/utils/week-range.ts`) computes the
   Monday-Sunday boundary Volume uses now and Consistency reuses too.
-  Consistency's data layer is done: `getCurrentWeekRange()` now takes an
+  **Consistency is fully wired.** `getCurrentWeekRange()` takes an
   optional `referenceDate` (arbitrary past weeks, not just today), and
   `getConsistency()` (`summary-repo.ts`) returns
-  `{ sessionsThisWeek, weeklyStreak }` from a single `session.date` query,
-  bucketed by week. Streak is strict — an in-progress week with nothing
-  logged yet breaks it immediately, no grace period. Verified against
-  synthetic cases (consecutive weeks, a gap week, a 0-session current week
-  after a real streak, empty history) plus a live read-only smoke test
-  against the dev DB. `consistency-card.tsx` itself is not yet wired —
-  still on placeholder data. Recent PRs card is also still on placeholder
-  data.
-- **Next:** Wire `getConsistency()` into `consistency-card.tsx` — the
-  UI-wiring half, same split as Volume/Progression. After that: PR
-  detection — the last and biggest of the four Summary data tasks, and
+  `{ sessionsThisWeek, weeklyStreak, completedDays }` from a single
+  `session.date` query, bucketed by week. Streak is strict — an
+  in-progress week with nothing logged yet breaks it immediately, no
+  grace period. `completedDays` is a 7-element Monday-first boolean
+  array (feeds the card's day-by-day ledger strip), derived from the
+  same already-fetched dates, no second query. `consistency-card.tsx`
+  mirrors `volume-card.tsx`'s exact fetch shape (`useEffect`/`useState`,
+  swallow-and-fallback to zero/all-false on error, no retry UI — neither
+  sibling card has one either). Verified against synthetic cases
+  (consecutive weeks, a gap week, a 0-session current week after a real
+  streak, empty history, a mixed trained/untrained week) plus a live
+  read-only smoke test against the dev DB, then click-through on-device
+  including a forced-error fallback check.
+  **Consistency, Volume, and Progression are all fully wired now —
+  Recent PRs is the only Summary card still on placeholder data.**
+- **Next:** PR detection — the last of the four Summary data tasks, and
   it feeds two places at once (Summary's Recent PRs card here, and
-  Track's still-deferred PR gold chip/flash from months back). Treat it
-  as its own design discussion before scoping as a routine query —
-  open questions include computed-live vs. stored all-time-best per
-  exercise, and what "just happened" means for a one-time flash vs.
-  a historical PR shown in a list. After Summary is fully wired: auth +
-  RLS, then EAS Build/APK.
+  Track's still-deferred PR gold chip/flash from months back). This is
+  its own design discussion before any scoping/prompt-writing, not a
+  routine query — open questions: computed-live-per-view vs. stored
+  all-time-best per exercise (and, if stored, what invalidates a stored
+  value if editing/deleting past sets is ever allowed); and separately,
+  what "just happened" means for Track's one-time gold-flash moment vs.
+  a PR that just needs to show up correctly in Summary's list days or
+  weeks later. After Summary is fully wired: auth + RLS, then EAS
+  Build/APK.
 - **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
   `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
   shared `src/utils/local-date.ts`. Not urgent — each is currently used

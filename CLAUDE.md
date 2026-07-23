@@ -3,8 +3,8 @@
 ## Current state
 _Last updated: 2026-07-23_
 
-- **Last commit:** e907fad (wire real Progression data into progression-card.tsx)
-- **Pushed:** yes, origin/master
+- **Last commit:** 3c8bb74 (add getConsistency() query for sessions-this-week and weekly streak)
+- **Pushed:** not yet
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
   reopening an exercise mid-session now reads back today's already-logged
@@ -39,12 +39,20 @@ _Last updated: 2026-07-23_
   zero-filled, guarded against divide-by-zero on an all-zero week
   (verified against a genuine all-zero current week live). New shared
   util `getCurrentWeekRange()` (`src/utils/week-range.ts`) computes the
-  Monday-Sunday boundary Volume uses now and Consistency will reuse next.
-  Consistency and Recent PRs cards are still on placeholder data.
-- **Next:** Consistency query — sessions this week + weekly streak count,
-  via `getCurrentWeekRange()` — then wire into `consistency-card.tsx`,
-  same pattern as Volume/Progression (data-layer task, tested against
-  dev DB, reviewed, then a separate UI-wiring task). After that: PR
+  Monday-Sunday boundary Volume uses now and Consistency reuses too.
+  Consistency's data layer is done: `getCurrentWeekRange()` now takes an
+  optional `referenceDate` (arbitrary past weeks, not just today), and
+  `getConsistency()` (`summary-repo.ts`) returns
+  `{ sessionsThisWeek, weeklyStreak }` from a single `session.date` query,
+  bucketed by week. Streak is strict — an in-progress week with nothing
+  logged yet breaks it immediately, no grace period. Verified against
+  synthetic cases (consecutive weeks, a gap week, a 0-session current week
+  after a real streak, empty history) plus a live read-only smoke test
+  against the dev DB. `consistency-card.tsx` itself is not yet wired —
+  still on placeholder data. Recent PRs card is also still on placeholder
+  data.
+- **Next:** Wire `getConsistency()` into `consistency-card.tsx` — the
+  UI-wiring half, same split as Volume/Progression. After that: PR
   detection — the last and biggest of the four Summary data tasks, and
   it feeds two places at once (Summary's Recent PRs card here, and
   Track's still-deferred PR gold chip/flash from months back). Treat it
@@ -53,8 +61,13 @@ _Last updated: 2026-07-23_
   exercise, and what "just happened" means for a one-time flash vs.
   a historical PR shown in a list. After Summary is fully wired: auth +
   RLS, then EAS Build/APK.
-- **Parking lot:** (empty — PR detection moved to Next since it's now
-  properly scoped as the next real task, not a someday item.)
+- **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
+  `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
+  shared `src/utils/local-date.ts`. Not urgent — each is currently used
+  in exactly one file, so there's no drift yet (unlike the old `fmt()`
+  case, which was the same logic silently diverging across three
+  copies) — but it's the same shape of problem starting over. Revisit
+  once Summary's data layer is fully done (after PR detection).
 
 Rule going forward: update the "_Last updated_" line and these bullets at the
 end of each session. This section is the source of truth for "where am I."

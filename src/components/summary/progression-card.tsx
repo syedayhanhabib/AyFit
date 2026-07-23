@@ -1,24 +1,12 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
 
+import { getE1rmHistory, getExercisesWithHistory } from '@/lib/workout-set-repo';
+import type { E1rmPoint, ExerciseHistoryEntry } from '@/lib/workout-set-repo';
 import { fmt } from '@/utils/format-number';
 import { Palette, Typefaces } from '@/constants/theme';
 import { GlossaryInfoDot } from './glossary-info-dot';
-
-// Placeholder series generator — real source (per-exercise e1RM history from
-// Supabase) is a follow-up. Ported as-is from the design mock so the chart
-// math (smoothing, range filtering, coordinate mapping) is already correct
-// once real points get substituted in.
-type ExerciseConfig = { count: number; interval: number; start: number; end: number };
-
-const EXERCISE_CONFIGS: Record<string, ExerciseConfig> = {
-  'Bench Press': { count: 16, interval: 3, start: 85, end: 100.5 },
-  'Back Squat': { count: 10, interval: 7, start: 115, end: 142.5 },
-  Deadlift: { count: 8, interval: 9, start: 155, end: 181 },
-  'Overhead Press': { count: 9, interval: 6, start: 44, end: 54.5 },
-};
-const EXERCISE_NAMES = Object.keys(EXERCISE_CONFIGS);
 
 type RangeKey = 'week' | 'month' | 'all';
 const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
@@ -31,17 +19,12 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 type SeriesPoint = { date: Date; value: number };
 
-function genSeries(cfg: ExerciseConfig, today: Date): SeriesPoint[] {
-  const points: SeriesPoint[] = [];
-  for (let i = 0; i < cfg.count; i++) {
-    const daysAgo = (cfg.count - 1 - i) * cfg.interval;
-    const date = new Date(today.getTime() - daysAgo * 86_400_000);
-    const progress = cfg.count === 1 ? 1 : i / (cfg.count - 1);
-    const base = cfg.start + (cfg.end - cfg.start) * progress;
-    const wobble = Math.sin(i * 1.7) * 0.6 + Math.sin(i * 0.53) * 0.9;
-    points.push({ date, value: Math.round((base + wobble) * 10) / 10 });
-  }
-  return points;
+// Postgres `date` values are 'YYYY-MM-DD', always local — parsed via explicit
+// Y/M/D components (not `new Date(dateStr)`) for the same reason as
+// format-relative-date.ts: bare date strings parse as UTC otherwise.
+function parseSessionDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
 }
 
 function filterByRange(points: SeriesPoint[], range: RangeKey, today: Date): SeriesPoint[] {
@@ -97,15 +80,61 @@ function buildChart(points: SeriesPoint[]) {
   return { linePath, fillPath, dotX: last.x, dotY: last.y };
 }
 
-export function ProgressionCard() {
-  const [exercise, setExercise] = useState(EXERCISE_NAMES[0]);
-  const [range, setRange] = useState<RangeKey>('month');
+function toSeriesPoints(history: E1rmPoint[]): SeriesPoint[] {
+  return history.map(p => ({ date: parseSessionDate(p.date), value: p.e1rm }));
+}
 
-  const { headlineValue, deltaLabel, linePath, fillPath, dotX, dotY, axisStart, axisEnd } = useMemo(() => {
+export function ProgressionCard() {
+  // null = not yet fetched; [] = fetched, no exercises with history — these
+  // are distinct states even though both currently render nothing (no card).
+  const [exercises, setExercises] = useState<ExerciseHistoryEntry[] | null>(null);
+  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [range, setRange] = useState<RangeKey>('month');
+  // null = no history fetched yet for the current selection (first-load only —
+  // switching exercises leaves the previous exercise's history in place until
+  // the new fetch resolves, so the chart never shows a half-updated state).
+  const [history, setHistory] = useState<E1rmPoint[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getExercisesWithHistory()
+      .then(result => {
+        if (cancelled) return;
+        setExercises(result);
+        // Default selection = most-recently-logged exercise (index 0 of the
+        // real list), not a hardcoded name.
+        if (result.length > 0) setSelectedExerciseId(result[0].id);
+      })
+      .catch(() => {
+        if (!cancelled) setExercises([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedExerciseId) return;
+    let cancelled = false;
+    getE1rmHistory(selectedExerciseId)
+      .then(result => {
+        if (!cancelled) setHistory(result);
+      })
+      .catch(() => {
+        if (!cancelled) setHistory([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedExerciseId]);
+
+  const chartData = useMemo(() => {
+    if (!history || history.length === 0) return null;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const fullSeries = genSeries(EXERCISE_CONFIGS[exercise], today);
+    const fullSeries = toSeriesPoints(history);
     const usedPoints = filterByRange(fullSeries, range, today);
     const chart = buildChart(usedPoints);
 
@@ -124,20 +153,22 @@ export function ProgressionCard() {
       axisStart: formatShort(usedPoints[0].date),
       axisEnd: formatShort(usedPoints[usedPoints.length - 1].date),
     };
-  }, [exercise, range]);
+  }, [history, range]);
+
+  if (exercises === null || exercises.length === 0) return null;
 
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Progression</Text>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-        {EXERCISE_NAMES.map(name => (
+        {exercises.map(ex => (
           <Pressable
-            key={name}
-            onPress={() => setExercise(name)}
-            style={[styles.chip, name === exercise && styles.chipActive]}
+            key={ex.id}
+            onPress={() => setSelectedExerciseId(ex.id)}
+            style={[styles.chip, ex.id === selectedExerciseId && styles.chipActive]}
           >
-            <Text style={[styles.chipLabel, name === exercise && styles.chipLabelActive]}>{name}</Text>
+            <Text style={[styles.chipLabel, ex.id === selectedExerciseId && styles.chipLabelActive]}>{ex.name}</Text>
           </Pressable>
         ))}
       </ScrollView>
@@ -158,27 +189,43 @@ export function ProgressionCard() {
         <Text style={styles.e1rmLabel}>e1RM</Text>
         <GlossaryInfoDot term="e1rm" />
       </View>
-      <Text style={styles.headline}>
-        {headlineValue}
-        <Text style={styles.headlineUnit}>kg</Text>
-      </Text>
-      <Text style={styles.delta}>{deltaLabel}</Text>
 
-      <Svg viewBox="0 0 314 116" style={styles.chart}>
-        <Defs>
-          <SvgLinearGradient id="progFill" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={Palette.brand} stopOpacity={0.28} />
-            <Stop offset="100%" stopColor={Palette.brand} stopOpacity={0} />
-          </SvgLinearGradient>
-        </Defs>
-        <Path d={fillPath} fill="url(#progFill)" stroke="none" />
-        <Path d={linePath} fill="none" stroke={Palette.brand} strokeWidth={2.5} strokeLinecap="round" />
-        <Circle cx={dotX} cy={dotY} r={4} fill={Palette.brand} stroke={Palette.background} strokeWidth={2} />
-      </Svg>
-      <View style={styles.axisRow}>
-        <Text style={styles.axisLabel}>{axisStart}</Text>
-        <Text style={styles.axisLabel}>{axisEnd}</Text>
-      </View>
+      {history === null ? (
+        <ActivityIndicator color={Palette.textSecondary} style={styles.loading} />
+      ) : chartData ? (
+        <>
+          <Text style={styles.headline}>
+            {chartData.headlineValue}
+            <Text style={styles.headlineUnit}>kg</Text>
+          </Text>
+          <Text style={styles.delta}>{chartData.deltaLabel}</Text>
+
+          <Svg viewBox="0 0 314 116" style={styles.chart}>
+            <Defs>
+              <SvgLinearGradient id="progFill" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor={Palette.brand} stopOpacity={0.28} />
+                <Stop offset="100%" stopColor={Palette.brand} stopOpacity={0} />
+              </SvgLinearGradient>
+            </Defs>
+            <Path d={chartData.fillPath} fill="url(#progFill)" stroke="none" />
+            <Path d={chartData.linePath} fill="none" stroke={Palette.brand} strokeWidth={2.5} strokeLinecap="round" />
+            <Circle
+              cx={chartData.dotX}
+              cy={chartData.dotY}
+              r={4}
+              fill={Palette.brand}
+              stroke={Palette.background}
+              strokeWidth={2}
+            />
+          </Svg>
+          <View style={styles.axisRow}>
+            <Text style={styles.axisLabel}>{chartData.axisStart}</Text>
+            <Text style={styles.axisLabel}>{chartData.axisEnd}</Text>
+          </View>
+        </>
+      ) : (
+        <Text style={styles.emptyText}>No e1RM data yet for this exercise.</Text>
+      )}
     </View>
   );
 }
@@ -230,4 +277,12 @@ const styles = StyleSheet.create({
   chart: { width: '100%', height: 116 },
   axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   axisLabel: { fontFamily: Typefaces.uiRegular, fontSize: 11, color: Palette.textMuted },
+  loading: { paddingVertical: 32 },
+  emptyText: {
+    fontFamily: Typefaces.uiRegular,
+    fontSize: 13,
+    color: Palette.textMuted,
+    textAlign: 'center',
+    paddingVertical: 32,
+  },
 });

@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import type { CategoryName } from '@/constants/theme';
 import { getCurrentWeekRange } from '@/utils/week-range';
+import { epleyE1rm } from '@/utils/e1rm';
+import { detectPrSessions, type PrEntry } from '@/utils/pr-detection';
 
 // Aggregate, cross-table queries for the Summary tab — not owned by any one
 // table's repo (contrast workout-set-repo.ts, which is scoped to a single
@@ -91,4 +93,56 @@ export async function getConsistency(): Promise<{
   });
 
   return { sessionsThisWeek, weeklyStreak, completedDays };
+}
+
+export type PrEvent = { exerciseId: string; exerciseName: string; date: string; e1rm: number };
+
+type PrSetRow = {
+  exercise_id: string;
+  weight_kg: number;
+  reps: number;
+  exercise: { name: string };
+  session: { date: string };
+};
+
+// Read-only: computed live, nothing stored — an exercise's PR history is
+// derived fresh from session + workout_set every call, same philosophy as
+// e1RM/Volume (CLAUDE.md's "Derived metrics" section), so a deleted set
+// can never leave a stale best-value column behind. Feeds Summary's
+// Recent PRs card: the most recent `limit` PR-setting sessions across all
+// exercises, recency-capped rather than time-windowed.
+export async function getRecentPRs(limit = 5): Promise<PrEvent[]> {
+  const { data, error } = await supabase
+    .from('workout_set')
+    .select('exercise_id, weight_kg, reps, exercise!inner(name), session!inner(date)')
+    .eq('is_warmup', false)
+    .returns<PrSetRow[]>();
+
+  if (error) throw error;
+
+  // Reduce to one entry per exercise-per-session (that session's best
+  // working-set e1RM), same definition Progression already uses.
+  const bestByKey = new Map<string, { entry: PrEntry; exerciseName: string }>();
+  for (const row of data) {
+    const e1rm = epleyE1rm(row.weight_kg, row.reps);
+    const key = `${row.exercise_id}|${row.session.date}`;
+    const existing = bestByKey.get(key);
+    if (!existing || e1rm > existing.entry.e1rm) {
+      bestByKey.set(key, {
+        entry: { exerciseId: row.exercise_id, date: row.session.date, e1rm },
+        exerciseName: row.exercise.name,
+      });
+    }
+  }
+
+  const entries = [...bestByKey.values()].map(v => v.entry);
+  const events = detectPrSessions(entries);
+
+  return events
+    .map(event => ({
+      ...event,
+      exerciseName: bestByKey.get(`${event.exerciseId}|${event.date}`)!.exerciseName,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, limit);
 }

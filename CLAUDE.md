@@ -3,7 +3,7 @@
 ## Current state
 _Last updated: 2026-07-23_
 
-- **Last commit:** cc42a13 (add PR detection: getRecentPRs() for Summary's Recent PRs card)
+- **Last commit:** 9de41e2 (wire getRecentPRs() into recent-prs-card.tsx)
 - **Pushed:** yes, origin/master
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
@@ -74,18 +74,33 @@ _Last updated: 2026-07-23_
   design — verified against 6 synthetic cases (single session, strictly
   increasing, exact tie, dip-then-re-break, more events than `limit`,
   empty history) plus a live read-only smoke test.
-  **Scope note: this covers Summary's Recent PRs card only.**
-  `pr-card.tsx` itself is not yet wired — still on placeholder data.
-  Track's live gold-flash moment (per-set comparison against the
+  `recent-prs-card.tsx` is now wired too: `useEffect`/`useState`,
+  swallow-and-fallback to `[]` on error, same shape as the other three
+  cards. Added a `loading` state and an `emptyText` state (mirroring
+  `progression-card.tsx`'s "No e1RM data yet" convention) — the shell
+  never had either, since its placeholder array was always hardcoded
+  non-empty. Gold styling (`#FFC738`) is static only, unchanged from
+  the original markup — no flash/glow/haptic added; verified via
+  computed styles (`animationName: none`) on a temporarily-stubbed
+  fake-data pass (injected inline, click-through confirmed, reverted —
+  `git diff` showed only the real wiring after).
+  **All four Summary cards — Consistency, Volume, Progression, Recent
+  PRs — are now fully wired to real, computed-live data. Summary is
+  done.** Live dev DB currently has 0 PR events (only 1 non-warmup set
+  logged so far), so the empty state is what's actually been verified
+  live; the gold-card-with-content visual was verified via the stubbed
+  pass above, not yet against real earned data.
+  **Scope note, still true:** this is Summary's historical PR list
+  only. Track's live gold-flash moment (per-set comparison against the
   running max of every prior set for that exercise, no session-grouping
-  needed there) is a separate, still-deferred task — this work didn't
-  touch Track at all.
-- **Next:** Wire `getRecentPRs()` into `pr-card.tsx` — the UI-wiring
-  half, same pattern as Volume/Progression/Consistency. Once that's
-  done, all four Summary cards are fully wired and Summary is complete.
-  After that: Track's deferred PR gold-flash/chip (per-set live
-  comparison, separate from Summary's per-session history), then auth +
-  RLS, then EAS Build/APK.
+  needed there) remains a separate, deferred task — a real-time
+  UI/haptic moment triggered at set-insert time, not a data-fetch-and-
+  render card, so it needs its own scoping conversation rather than
+  reusing this thread's wiring pattern.
+- **Next:** Open decision, not yet made — either (a) Track's deferred
+  PR gold-flash/haptic (per-set live comparison, separate scoping
+  conversation), or (b) auth + RLS now that all of Summary is real.
+  After whichever comes first: the other one, then EAS Build/APK.
 - **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
   `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
   shared `src/utils/local-date.ts`. Not urgent — each is currently used

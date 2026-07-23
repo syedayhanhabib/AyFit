@@ -1,30 +1,32 @@
+import { useEffect, useState } from 'react';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { getRecentPRs, type PrEvent } from '@/lib/summary-repo';
 import { Palette, Typefaces } from '@/constants/theme';
 import { fmt } from '@/utils/format-number';
 import { formatRelativeDate } from '@/utils/format-relative-date';
 import { hexToRgba } from '@/utils/hex-to-rgba';
 
-// Placeholder — real source (all-time-best e1RM per exercise, auto-detected
-// on each new set) is a follow-up; PR detection itself isn't built yet.
-const RECENT_PRS = [
-  { exercise: 'Back Squat', e1rm: 142.5, daysAgo: 3 },
-  { exercise: 'Bench Press', e1rm: 100.5, daysAgo: 7 },
-  { exercise: 'Deadlift', e1rm: 181, daysAgo: 14 },
-];
-
-function dateStringDaysAgo(daysAgo: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 export function RecentPrsCard() {
+  // null = not yet fetched.
+  const [prs, setPrs] = useState<PrEvent[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getRecentPRs()
+      .then(result => {
+        if (!cancelled) setPrs(result);
+      })
+      .catch(() => {
+        if (!cancelled) setPrs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <View style={styles.card}>
       <LinearGradient
@@ -35,46 +37,52 @@ export function RecentPrsCard() {
       />
       <Text style={styles.title}>Recent PRs</Text>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        {RECENT_PRS.map(pr => (
-          <View key={pr.exercise} style={styles.prCard}>
-            <LinearGradient
-              colors={[hexToRgba(Palette.prGold, 0.18), hexToRgba(Palette.prGold, 0.03)]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0.7 }}
-              style={[StyleSheet.absoluteFill, styles.cardBackdrop]}
-            />
-            <View style={styles.prBadgeRow}>
+      {prs === null ? (
+        <ActivityIndicator color={Palette.textSecondary} style={styles.loading} />
+      ) : prs.length === 0 ? (
+        <Text style={styles.emptyText}>No PRs yet — keep logging to set your first one.</Text>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          {prs.map(pr => (
+            <View key={`${pr.exerciseId}-${pr.date}`} style={styles.prCard}>
               <LinearGradient
-                colors={[Palette.prGold, hexToRgba(Palette.prGold, 0.4)]}
-                style={styles.prDot}
-              />
-              <Text style={styles.prBadgeLabel}>Personal record</Text>
-            </View>
-            <Text style={styles.prExercise}>{pr.exercise}</Text>
-            <MaskedView
-              maskElement={
-                <Text style={styles.prValue}>
-                  {fmt(pr.e1rm)}
-                  <Text style={styles.prValueUnit}>kg</Text>
-                </Text>
-              }
-            >
-              <LinearGradient
-                colors={[Palette.prGold, hexToRgba(Palette.prGold, 0.55)]}
+                colors={[hexToRgba(Palette.prGold, 0.18), hexToRgba(Palette.prGold, 0.03)]}
                 start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                end={{ x: 1, y: 0.7 }}
+                style={[StyleSheet.absoluteFill, styles.cardBackdrop]}
+              />
+              <View style={styles.prBadgeRow}>
+                <LinearGradient
+                  colors={[Palette.prGold, hexToRgba(Palette.prGold, 0.4)]}
+                  style={styles.prDot}
+                />
+                <Text style={styles.prBadgeLabel}>Personal record</Text>
+              </View>
+              <Text style={styles.prExercise}>{pr.exerciseName}</Text>
+              <MaskedView
+                maskElement={
+                  <Text style={styles.prValue}>
+                    {fmt(pr.e1rm)}
+                    <Text style={styles.prValueUnit}>kg</Text>
+                  </Text>
+                }
               >
-                <Text style={[styles.prValue, styles.prValueGhost]}>
-                  {fmt(pr.e1rm)}
-                  <Text style={styles.prValueUnit}>kg</Text>
-                </Text>
-              </LinearGradient>
-            </MaskedView>
-            <Text style={styles.prMeta}>e1RM · {formatRelativeDate(dateStringDaysAgo(pr.daysAgo))}</Text>
-          </View>
-        ))}
-      </ScrollView>
+                <LinearGradient
+                  colors={[Palette.prGold, hexToRgba(Palette.prGold, 0.55)]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Text style={[styles.prValue, styles.prValueGhost]}>
+                    {fmt(pr.e1rm)}
+                    <Text style={styles.prValueUnit}>kg</Text>
+                  </Text>
+                </LinearGradient>
+              </MaskedView>
+              <Text style={styles.prMeta}>e1RM · {formatRelativeDate(pr.date)}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -91,6 +99,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   title: { fontFamily: Typefaces.uiBold, fontSize: 16, color: Palette.text, marginBottom: 14, paddingRight: 18 },
+  loading: { paddingVertical: 32 },
+  emptyText: {
+    fontFamily: Typefaces.uiRegular,
+    fontSize: 13,
+    color: Palette.textMuted,
+    textAlign: 'center',
+    paddingVertical: 32,
+    paddingRight: 18,
+  },
   row: { gap: 12, paddingRight: 18, paddingBottom: 2 },
   cardBackdrop: { pointerEvents: 'none' },
   prCard: {

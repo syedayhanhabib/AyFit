@@ -14,6 +14,15 @@ function formatDateLocal(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+// Inverse of formatDateLocal — session.date is stored as a local-date
+// string (session-repo.ts's todayLocalDate() convention), so it must be
+// parsed back via explicit y/m/d components rather than `new Date(str)`,
+// which parses as UTC midnight and can land on the wrong local day.
+function parseDateLocal(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 const EMPTY_VOLUME: Record<CategoryName, number> = { Chest: 0, Back: 0, Arms: 0, Legs: 0, Shoulders: 0 };
 
 type VolumeRow = { exercise: { muscle: { nav_category: CategoryName } } };
@@ -39,4 +48,35 @@ export async function getVolumeByMuscle(): Promise<Record<CategoryName, number>>
     counts[row.exercise.muscle.nav_category] += 1;
   }
   return counts;
+}
+
+// Read-only: sessions logged this calendar week, and the current weekly
+// streak — feeds Summary's Consistency card. Strict: an in-progress week
+// with nothing logged yet counts as 0 and breaks the streak immediately,
+// whether it's the current week or a past one. No grace period.
+export async function getConsistency(): Promise<{ sessionsThisWeek: number; weeklyStreak: number }> {
+  const { data, error } = await supabase.from('session').select('date').order('date', { ascending: false });
+
+  if (error) throw error;
+
+  const dates = data.map(row => row.date as string);
+
+  const { start: thisWeekStart, end: thisWeekEnd } = getCurrentWeekRange();
+  const thisWeekStartStr = formatDateLocal(thisWeekStart);
+  const thisWeekEndStr = formatDateLocal(thisWeekEnd);
+  const sessionsThisWeek = dates.filter(date => date >= thisWeekStartStr && date <= thisWeekEndStr).length;
+
+  // Bucket every logged date by the Monday of its week, then walk backward
+  // one week at a time from the current week, counting consecutive weeks
+  // with >=1 session until the first miss.
+  const trainedWeeks = new Set(dates.map(date => formatDateLocal(getCurrentWeekRange(parseDateLocal(date)).start)));
+
+  let weeklyStreak = 0;
+  let cursor = thisWeekStart;
+  while (trainedWeeks.has(formatDateLocal(cursor))) {
+    weeklyStreak += 1;
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - 7);
+  }
+
+  return { sessionsThisWeek, weeklyStreak };
 }

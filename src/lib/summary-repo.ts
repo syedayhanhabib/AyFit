@@ -50,11 +50,17 @@ export async function getVolumeByMuscle(): Promise<Record<CategoryName, number>>
   return counts;
 }
 
-// Read-only: sessions logged this calendar week, and the current weekly
-// streak — feeds Summary's Consistency card. Strict: an in-progress week
-// with nothing logged yet counts as 0 and breaks the streak immediately,
-// whether it's the current week or a past one. No grace period.
-export async function getConsistency(): Promise<{ sessionsThisWeek: number; weeklyStreak: number }> {
+// Read-only: sessions logged this calendar week, the current weekly streak,
+// and which days of this week (Monday-first) have a logged session — feeds
+// Summary's Consistency card, including its day-by-day ledger strip. Strict:
+// an in-progress week with nothing logged yet counts as 0 and breaks the
+// streak immediately, whether it's the current week or a past one. No grace
+// period.
+export async function getConsistency(): Promise<{
+  sessionsThisWeek: number;
+  weeklyStreak: number;
+  completedDays: boolean[];
+}> {
   const { data, error } = await supabase.from('session').select('date').order('date', { ascending: false });
 
   if (error) throw error;
@@ -78,5 +84,11 @@ export async function getConsistency(): Promise<{ sessionsThisWeek: number; week
     cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - 7);
   }
 
-  return { sessionsThisWeek, weeklyStreak };
+  const dateSet = new Set(dates);
+  const completedDays = Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(thisWeekStart.getFullYear(), thisWeekStart.getMonth(), thisWeekStart.getDate() + i);
+    return dateSet.has(formatDateLocal(day));
+  });
+
+  return { sessionsThisWeek, weeklyStreak, completedDays };
 }

@@ -221,14 +221,14 @@ export default function ExerciseScreen() {
                   <View style={styles.stepperRow}>
                     <StepperField
                       label="Kg"
+                      flex={1.3}
                       value={weightInput}
                       onChangeText={setWeightInput}
                       onDecrement={() => stepWeight(-2.5)}
                       onIncrement={() => stepWeight(2.5)}
                       keyboardType="decimal-pad"
-                      inputWidth={58}
+                      inputWidth={66}
                     />
-                    <Text style={styles.separator}>×</Text>
                     <StepperField
                       label="Reps"
                       value={repsInput}
@@ -238,12 +238,10 @@ export default function ExerciseScreen() {
                       keyboardType="number-pad"
                       inputWidth={40}
                     />
-                    <View style={styles.rpeSeparator}>
-                      <Text style={[styles.separator, styles.dottedUnderline]}>@ RPE</Text>
-                      <InfoTip term="rpe" />
-                    </View>
                     <StepperField
-                      label=""
+                      label="RPE"
+                      labelStyle={styles.dottedUnderline}
+                      icon={<InfoTip term="rpe" />}
                       value={rpeInput}
                       onChangeText={setRpeInput}
                       onDecrement={() => stepRpe(-0.5)}
@@ -411,8 +409,6 @@ const styles = StyleSheet.create({
     borderColor: TrackColors.border,
   },
   stepperRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8, marginBottom: 10 },
-  separator: { color: TrackColors.textMuted, fontFamily: TrackFonts.uiRegular, fontSize: 13, alignSelf: 'center' },
-  rpeSeparator: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center' },
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   warmupGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   addButton: {

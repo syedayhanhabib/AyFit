@@ -1,7 +1,7 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-23_
+_Last updated: 2026-07-24_
 
 - **Last commit:** 9de41e2 (wire getRecentPRs() into recent-prs-card.tsx)
 - **Pushed:** yes, origin/master
@@ -97,10 +97,28 @@ _Last updated: 2026-07-23_
   UI/haptic moment triggered at set-insert time, not a data-fetch-and-
   render card, so it needs its own scoping conversation rather than
   reusing this thread's wiring pattern.
-- **Next:** Open decision, not yet made — either (a) Track's deferred
-  PR gold-flash/haptic (per-set live comparison, separate scoping
-  conversation), or (b) auth + RLS now that all of Summary is real.
-  After whichever comes first: the other one, then EAS Build/APK.
+  **EAS build for a standalone Android APK is done.** Commit `b5955a3`
+  (pushed to `origin/master`): `android.package` set to
+  `com.syedayhanhabib.ayfit` in `app.json`; `eas.json` scaffolded via
+  `eas build:configure`, with the `preview` profile explicitly set to
+  `"distribution": "internal"` + `"android": { "buildType": "apk" }`
+  (the scaffold's default would otherwise have produced an AAB).
+  Supabase env vars (`EXPO_PUBLIC_SUPABASE_URL`,
+  `EXPO_PUBLIC_SUPABASE_ANON_KEY`) registered in EAS's `preview`
+  environment via `eas env:set`/`eas env:create`, not committed to the
+  repo. `eas build --profile preview --platform android` was run and
+  succeeded — EAS auto-generated and manages the Android keystore, no
+  manual signing setup needed. The resulting APK is installed on a
+  real Android device and confirmed working end-to-end with a real
+  write (a shoulder exercise set logged and read back correctly),
+  independent of Expo Go/Metro/shared wifi for the first time.
+- **Next:** A real-device UI polish pass is next — issues surfaced
+  only once running standalone on-device, not visible during Expo
+  Go/web testing (specifics to be scoped in a new chat). After that:
+  offline support (writes currently fail outright with no
+  connectivity, no local queue/sync-on-reconnect). Then: auth + RLS +
+  a second EAS build before sharing the APK with friends. Track's live
+  PR gold-flash remains parked/deferred as before, not scoped yet.
 - **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
   `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
   shared `src/utils/local-date.ts`. Not urgent — each is currently used

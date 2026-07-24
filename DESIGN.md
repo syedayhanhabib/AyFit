@@ -193,11 +193,15 @@ Non-negotiables regardless of your specific complaints:
 - Warm-up toggle discoverable but visually recessive.
 - Set ladder stacking behavior as described above.
 
-**Open — needs your input:** what specifically bugs you about the current
-Track screen? (layout density, colors, input field feel, button
-placement, something else entirely) — fill this in before the design tool
-session so the redesign actually targets your pain points instead of
-guessing.
+**Phase 1 is complete and pushed.** The redesign above shipped (v3 color
+system, `src/constants/track-theme.ts` — see `CLAUDE.md`'s Current
+state).
+
+**Phase 1.5 — real-device polish pass (queued, not yet scoped):**
+running as a standalone installed build (EAS APK, not Expo Go/web)
+surfaced issues that weren't visible before. This is targeted polish on
+an already-shipped design, not a redo of Phase 1 — specific pain points
+to be filled in during the next chat.
 
 ### Summary — Phase 2 (new build)
 
@@ -217,7 +221,10 @@ Priority order top-to-bottom (unchanged from `CLAUDE.md`):
 
 ## Open decisions — resolve before/at the design tool session
 
-- [ ] **Track pain points** — see above, this is the important one.
+- [x] **Track pain points** — Phase 1 shipped; Phase 1.5 (real-device
+  polish pass) is queued to capture the pain points that only surfaced
+  once running as a standalone installed build. See the Track — Phase 1
+  section above.
 - [ ] **Dark-mode-only vs. dark+light** — this doc assumes dark-first as
   the practical default for gym lighting/glare. Flag if you want a light
   mode too.

@@ -54,7 +54,12 @@ const styles = StyleSheet.create({
   input: {
     textAlign: 'center',
     fontFamily: TrackFonts.numeralBold,
-    fontSize: 19,
+    // Numeral-lg (40/44) felt oversized squeezed into this three-field
+    // stepper row — landed on 28/32 as the live-input size, paired with
+    // wider input boxes (see [exerciseId].tsx's inputWidth props) so it
+    // doesn't clip multi-digit values.
+    fontSize: 28,
+    lineHeight: 32,
     color: TrackColors.text,
     paddingVertical: 0,
   },

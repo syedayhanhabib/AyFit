@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fetchExerciseById } from '@/lib/exercises-repo';
 import { getOrCreateTodaySession, getTodaySession } from '@/lib/session-repo';
@@ -182,128 +183,131 @@ export default function ExerciseScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.screen}>
-        <KeyboardAvoidingView style={styles.flex} behavior={Platform.select({ ios: 'padding', default: undefined })}>
-          <View style={styles.header}>
-            <BackButton onPress={() => router.back()} />
-            <View style={styles.headerText}>
-              <Text style={styles.title} numberOfLines={1}>
-                {exercise?.name ?? 'Exercise'}
-              </Text>
-              {category && (
-                <View style={styles.categoryRow}>
-                  <CategoryDot color={accent} size={7} />
-                  <Text style={styles.categoryLabel}>{category}</Text>
-                </View>
-              )}
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <KeyboardAvoidingView style={styles.flex} behavior={Platform.select({ ios: 'padding', default: undefined })}>
+            <View style={styles.header}>
+              <BackButton onPress={() => router.back()} />
+              <View style={styles.headerText}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {exercise?.name ?? 'Exercise'}
+                </Text>
+                {category && (
+                  <View style={styles.categoryRow}>
+                    <CategoryDot color={accent} size={7} />
+                    <Text style={styles.categoryLabel}>{category}</Text>
+                  </View>
+                )}
+              </View>
             </View>
-          </View>
 
-          {isLoading ? (
-            <View style={styles.centerFill}>
-              <ActivityIndicator color={TrackColors.textSecondary} />
-            </View>
-          ) : !exercise ? (
-            <View style={styles.centerFill}>
-              <Text style={styles.emptyText}>Exercise not found</Text>
-            </View>
-          ) : (
-            <>
-              <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-                {!isLoadingSets && previousSet && (
-                  <View style={styles.previousCard}>
-                    <Text style={styles.cardLabel}>Last time</Text>
-                    <Text style={styles.previousValue}>
-                      {fmt(previousSet.weightKg)}kg × {previousSet.reps} @ RPE {fmt(previousSet.rpe)}
+            {isLoading ? (
+              <View style={styles.centerFill}>
+                <ActivityIndicator color={TrackColors.textSecondary} />
+              </View>
+            ) : !exercise ? (
+              <View style={styles.centerFill}>
+                <Text style={styles.emptyText}>Exercise not found</Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.inputCard}>
+                  {hasInput && !isValid && (
+                    <Text style={styles.errorText}>
+                      Enter weight &gt; 0, whole-number reps &gt;= 1, and RPE between 1 and 10.
                     </Text>
+                  )}
+                  {saveError && <Text style={styles.errorText}>{saveError}</Text>}
+
+                  <View style={styles.stepperRow}>
+                    <StepperField
+                      label="Kg"
+                      value={weightInput}
+                      onChangeText={setWeightInput}
+                      onDecrement={() => stepWeight(-2.5)}
+                      onIncrement={() => stepWeight(2.5)}
+                      keyboardType="decimal-pad"
+                      inputWidth={58}
+                    />
+                    <Text style={styles.separator}>×</Text>
+                    <StepperField
+                      label="Reps"
+                      value={repsInput}
+                      onChangeText={setRepsInput}
+                      onDecrement={() => stepReps(-1)}
+                      onIncrement={() => stepReps(1)}
+                      keyboardType="number-pad"
+                      inputWidth={40}
+                    />
+                    <Text style={styles.separator}>@ RPE</Text>
+                    <StepperField
+                      label=""
+                      value={rpeInput}
+                      onChangeText={setRpeInput}
+                      onDecrement={() => stepRpe(-0.5)}
+                      onIncrement={() => stepRpe(0.5)}
+                      keyboardType="decimal-pad"
+                      inputWidth={40}
+                    />
                   </View>
-                )}
 
-                <View style={styles.e1rmCard}>
-                  <View style={styles.e1rmLabelRow}>
-                    <Text style={styles.cardLabel}>e1RM this session</Text>
-                    <InfoTip term="e1rm" />
-                  </View>
-                  <Text style={styles.e1rmValue}>{e1rm !== undefined ? `${fmt(Math.round(e1rm * 10) / 10)}kg` : '—'}</Text>
-                </View>
-
-                {loadError && <Text style={styles.errorText}>{loadError}</Text>}
-                {deleteError && <Text style={styles.errorText}>{deleteError}</Text>}
-
-                {isLoadingSets ? (
-                  <ActivityIndicator color={TrackColors.textSecondary} />
-                ) : sets.length === 0 ? (
-                  <Text style={styles.emptyLadderText}>No sets logged yet.</Text>
-                ) : (
-                  sets.map((set, index) => (
-                    <SetRow key={set.id} set={set} index={index} onDelete={() => handleDeleteSet(set.id)} />
-                  ))
-                )}
-              </ScrollView>
-
-              <View style={styles.footer}>
-                {hasInput && !isValid && (
-                  <Text style={styles.errorText}>
-                    Enter weight &gt; 0, whole-number reps &gt;= 1, and RPE between 1 and 10.
-                  </Text>
-                )}
-                {saveError && <Text style={styles.errorText}>{saveError}</Text>}
-
-                <View style={styles.stepperRow}>
-                  <StepperField
-                    label="Kg"
-                    value={weightInput}
-                    onChangeText={setWeightInput}
-                    onDecrement={() => stepWeight(-2.5)}
-                    onIncrement={() => stepWeight(2.5)}
-                    keyboardType="decimal-pad"
-                  />
-                  <Text style={styles.separator}>×</Text>
-                  <StepperField
-                    label="Reps"
-                    value={repsInput}
-                    onChangeText={setRepsInput}
-                    onDecrement={() => stepReps(-1)}
-                    onIncrement={() => stepReps(1)}
-                    keyboardType="number-pad"
-                    inputWidth={32}
-                  />
-                  <Text style={styles.separator}>@ RPE</Text>
-                  <StepperField
-                    label=""
-                    value={rpeInput}
-                    onChangeText={setRpeInput}
-                    onDecrement={() => stepRpe(-0.5)}
-                    onIncrement={() => stepRpe(0.5)}
-                    keyboardType="decimal-pad"
-                    inputWidth={32}
-                  />
-                </View>
-
-                <View style={styles.actionRow}>
-                  <WarmupPill value={isWarmup} onToggle={() => setIsWarmup(prev => !prev)} />
-                  <Pressable
-                    onPress={handleAddSet}
-                    disabled={!isValid || isSaving}
-                    style={({ pressed }) => [
-                      styles.addButton,
-                      !isValid || isSaving ? styles.addButtonDisabled : null,
-                      pressed && isValid && !isSaving && styles.addButtonPressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.addButtonLabel,
-                        (!isValid || isSaving) && styles.addButtonLabelDisabled,
+                  <View style={styles.actionRow}>
+                    <WarmupPill value={isWarmup} onToggle={() => setIsWarmup(prev => !prev)} />
+                    <Pressable
+                      onPress={handleAddSet}
+                      disabled={!isValid || isSaving}
+                      style={({ pressed }) => [
+                        styles.addButton,
+                        !isValid || isSaving ? styles.addButtonDisabled : null,
+                        pressed && isValid && !isSaving && styles.addButtonPressed,
                       ]}
                     >
-                      {isSaving ? 'Saving…' : 'Add set'}
-                    </Text>
-                  </Pressable>
+                      <Text
+                        style={[
+                          styles.addButtonLabel,
+                          (!isValid || isSaving) && styles.addButtonLabelDisabled,
+                        ]}
+                      >
+                        {isSaving ? 'Saving…' : 'Add set'}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
-              </View>
-            </>
-          )}
-        </KeyboardAvoidingView>
+
+                <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+                  <View style={styles.e1rmCard}>
+                    <View style={styles.e1rmLabelRow}>
+                      <Text style={styles.cardLabel}>e1RM this session</Text>
+                      <InfoTip term="e1rm" />
+                    </View>
+                    <Text style={styles.e1rmValue}>{e1rm !== undefined ? `${fmt(Math.round(e1rm * 10) / 10)}kg` : '—'}</Text>
+                  </View>
+
+                  {loadError && <Text style={styles.errorText}>{loadError}</Text>}
+                  {deleteError && <Text style={styles.errorText}>{deleteError}</Text>}
+
+                  {isLoadingSets ? (
+                    <ActivityIndicator color={TrackColors.textSecondary} />
+                  ) : sets.length === 0 ? (
+                    <Text style={styles.emptyLadderText}>No sets logged yet.</Text>
+                  ) : (
+                    sets.map((set, index) => (
+                      <SetRow key={set.id} set={set} index={index} onDelete={() => handleDeleteSet(set.id)} />
+                    ))
+                  )}
+
+                  {!isLoadingSets && previousSet && (
+                    <View style={styles.previousCard}>
+                      <Text style={styles.cardLabel}>Last time</Text>
+                      <Text style={styles.previousValue}>
+                        {fmt(previousSet.weightKg)}kg × {previousSet.reps} @ RPE {fmt(previousSet.rpe)}
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
+              </>
+            )}
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </View>
     </>
   );
@@ -320,6 +324,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 14,
   },
+  safeArea: { flex: 1 },
   headerText: { flex: 1, minWidth: 0 },
   title: { fontFamily: TrackFonts.uiBold, fontSize: 19, color: TrackColors.text },
   categoryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
@@ -332,7 +337,7 @@ const styles = StyleSheet.create({
   },
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontFamily: TrackFonts.uiRegular, fontSize: 14, color: TrackColors.textSecondary },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 12 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
   cardLabel: {
     fontFamily: TrackFonts.uiSemiBold,
     fontSize: 11,
@@ -380,13 +385,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 20,
   },
-  footer: {
+  inputCard: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 12,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 18,
-    backgroundColor: '#1B1D20',
-    borderTopWidth: 1,
-    borderTopColor: TrackColors.border,
+    paddingTop: 14,
+    paddingBottom: 16,
+    backgroundColor: TrackColors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: TrackColors.border,
   },
   stepperRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8, marginBottom: 10 },
   separator: { color: TrackColors.textMuted, fontFamily: TrackFonts.uiRegular, fontSize: 13, alignSelf: 'center' },

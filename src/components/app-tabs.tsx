@@ -1,7 +1,8 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { Colors, Palette } from '@/constants/theme';
 
 export default function AppTabs() {
   const scheme = useColorScheme();
@@ -11,36 +12,40 @@ export default function AppTabs() {
     <NativeTabs
       backgroundColor={colors.background}
       indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      labelVisibilityMode="labeled"
+      labelStyle={{
+        default: { color: Palette.textSecondary },
+        selected: { color: Palette.brand, fontWeight: '600' },
+      }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Track</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          src={<NativeTabs.Trigger.VectorIcon family={MaterialCommunityIcons} name="dumbbell" />}
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="summary">
         <NativeTabs.Trigger.Label>Summary</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          src={
+            <NativeTabs.Trigger.VectorIcon family={MaterialCommunityIcons} name="chart-timeline-variant" />
+          }
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="calendar">
         <NativeTabs.Trigger.Label>Calendar</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          src={<NativeTabs.Trigger.VectorIcon family={MaterialCommunityIcons} name="calendar-month" />}
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          src={
+            <NativeTabs.Trigger.VectorIcon family={MaterialCommunityIcons} name="account-circle-outline" />
+          }
         />
       </NativeTabs.Trigger>
     </NativeTabs>

@@ -208,7 +208,7 @@ current:
 system, `src/constants/track-theme.ts` — see `CLAUDE.md`'s Current
 state).
 
-**Phase 1.5 — real-device polish pass, batch 1: complete and pushed.**
+**Phase 1.5 — real-device polish pass, batch 1: complete, not yet pushed.**
 Running as a standalone installed build (EAS APK, not Expo Go/web)
 surfaced issues that weren't visible before:
 - Tab bar: Android's BottomNavigationView was collapsing to

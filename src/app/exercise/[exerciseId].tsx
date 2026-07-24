@@ -238,7 +238,10 @@ export default function ExerciseScreen() {
                       keyboardType="number-pad"
                       inputWidth={40}
                     />
-                    <Text style={styles.separator}>@ RPE</Text>
+                    <View style={styles.rpeSeparator}>
+                      <Text style={[styles.separator, styles.dottedUnderline]}>@ RPE</Text>
+                      <InfoTip term="rpe" />
+                    </View>
                     <StepperField
                       label=""
                       value={rpeInput}
@@ -251,7 +254,10 @@ export default function ExerciseScreen() {
                   </View>
 
                   <View style={styles.actionRow}>
-                    <WarmupPill value={isWarmup} onToggle={() => setIsWarmup(prev => !prev)} />
+                    <View style={styles.warmupGroup}>
+                      <WarmupPill value={isWarmup} onToggle={() => setIsWarmup(prev => !prev)} />
+                      <InfoTip term="warmUp" />
+                    </View>
                     <Pressable
                       onPress={handleAddSet}
                       disabled={!isValid || isSaving}
@@ -276,7 +282,7 @@ export default function ExerciseScreen() {
                 <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
                   <View style={styles.e1rmCard}>
                     <View style={styles.e1rmLabelRow}>
-                      <Text style={styles.cardLabel}>e1RM this session</Text>
+                      <Text style={[styles.cardLabel, styles.dottedUnderline]}>e1RM this session</Text>
                       <InfoTip term="e1rm" />
                     </View>
                     <Text style={styles.e1rmValue}>{e1rm !== undefined ? `${fmt(Math.round(e1rm * 10) / 10)}kg` : '—'}</Text>
@@ -345,6 +351,13 @@ const styles = StyleSheet.create({
     color: TrackColors.textMuted,
     textTransform: 'uppercase',
   },
+  dottedUnderline: {
+    alignSelf: 'flex-start',
+    borderBottomWidth: 1,
+    borderStyle: 'dotted',
+    borderBottomColor: TrackColors.textSecondary,
+    paddingBottom: 1,
+  },
   previousCard: {
     backgroundColor: TrackColors.surface,
     borderRadius: 10,
@@ -399,7 +412,9 @@ const styles = StyleSheet.create({
   },
   stepperRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8, marginBottom: 10 },
   separator: { color: TrackColors.textMuted, fontFamily: TrackFonts.uiRegular, fontSize: 13, alignSelf: 'center' },
+  rpeSeparator: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center' },
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  warmupGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   addButton: {
     flex: 1,
     height: 48,

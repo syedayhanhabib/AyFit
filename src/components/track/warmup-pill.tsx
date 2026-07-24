@@ -42,5 +42,13 @@ const styles = StyleSheet.create({
     marginLeft: 3,
   },
   dotOn: { marginLeft: 17 },
-  label: { fontFamily: TrackFonts.uiRegular, fontSize: 13, color: TrackColors.textSecondary },
+  label: {
+    fontFamily: TrackFonts.uiRegular,
+    fontSize: 13,
+    color: TrackColors.textSecondary,
+    borderBottomWidth: 1,
+    borderStyle: 'dotted',
+    borderBottomColor: TrackColors.textSecondary,
+    paddingBottom: 1,
+  },
 });

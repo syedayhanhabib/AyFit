@@ -6,12 +6,12 @@ export const GLOSSARY: Record<GlossaryTermKey, GlossaryEntry> = {
   rpe: {
     title: 'RPE',
     description:
-      "Rate of Perceived Exertion. A 1-10 scale of how hard a set felt. ~10 = couldn't do another rep; lower numbers = more left in the tank.",
+      "Rate of Perceived Exertion — how hard a set felt, on a 1-10 scale. 10 means you couldn't have done another rep with good form; a 7 leaves about three reps in the tank. The scale started as a 1960s tool for cardio, later adapted by strength coaches to anchor each number to 'reps in reserve' — so it's less a mood score and more an estimate of how close you got to failure.",
   },
   e1rm: {
     title: 'e1RM',
     description:
-      'Estimated one-rep max. The weight you could theoretically lift once, calculated from the weight and reps you actually did. Used to track strength across different rep ranges.',
+      "Estimated one-rep max — the weight you could theoretically lift once, calculated from the weight and reps you actually did (Epley formula). AyFit takes your best working set each session and tracks that number over time — it's the core 'am I getting stronger' line. Most accurate under about 10 reps; for higher-rep sets, trust the trend more than the exact figure.",
   },
   progressiveOverload: {
     title: 'Progressive overload',

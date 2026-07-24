@@ -18,8 +18,8 @@ export function InfoTip({ term }: InfoTipProps) {
 
   return (
     <>
-      <Pressable onPress={() => setVisible(true)} hitSlop={8}>
-        <MaterialCommunityIcons name="information-outline" size={16} color={theme.textSecondary} />
+      <Pressable onPress={() => setVisible(true)} hitSlop={14}>
+        <MaterialCommunityIcons name="information-outline" size={20} color={theme.text} />
       </Pressable>
 
       <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>

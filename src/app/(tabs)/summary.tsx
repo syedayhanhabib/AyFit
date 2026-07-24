@@ -5,6 +5,7 @@ import { ConsistencyCard } from '@/components/summary/consistency-card';
 import { ProgressionCard } from '@/components/summary/progression-card';
 import { RecentPrsCard } from '@/components/summary/recent-prs-card';
 import { VolumeCard } from '@/components/summary/volume-card';
+import { Wordmark } from '@/components/wordmark';
 import { Palette, Typefaces } from '@/constants/theme';
 
 export default function SummaryScreen() {
@@ -12,7 +13,7 @@ export default function SummaryScreen() {
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.wordmark}>AYFIT</Text>
+          <Wordmark size={20} />
           <Text style={styles.eyebrow}>Summary</Text>
         </View>
         <ScrollView contentContainerStyle={styles.list}>
@@ -30,7 +31,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.background },
   safeArea: { flex: 1 },
   header: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 4 },
-  wordmark: { fontFamily: Typefaces.uiExtraBold, fontSize: 20, letterSpacing: 1, color: Palette.brand },
   eyebrow: {
     fontFamily: Typefaces.numeralMedium,
     fontSize: 12,

@@ -5,14 +5,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CATEGORIES, type Category } from '@/constants/categories';
 import { CategoryAccent, TrackColors, TrackFonts } from '@/constants/track-theme';
+import { Wordmark } from '@/components/wordmark';
 
 export default function TrackScreen() {
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.wordmark}>AYFIT</Text>
-          <Text style={styles.eyebrow}>Track — pick a muscle</Text>
+          <Wordmark size={22} />
+          <Text style={styles.eyebrow}>Track your workout — pick a muscle</Text>
         </View>
         <ScrollView contentContainerStyle={styles.list}>
           {CATEGORIES.map((cat, index) => (
@@ -55,12 +56,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: TrackColors.background },
   safeArea: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 20, paddingTop: 4 },
-  wordmark: {
-    fontFamily: TrackFonts.uiBold,
-    fontSize: 22,
-    letterSpacing: 1,
-    color: TrackColors.brand,
-  },
   eyebrow: {
     fontFamily: TrackFonts.numeralMedium,
     fontSize: 12,

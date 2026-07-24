@@ -103,6 +103,7 @@ export const Typefaces = {
   uiSemiBold: 'Inter_600SemiBold',
   uiBold: 'Inter_700Bold',
   uiExtraBold: 'Inter_800ExtraBold',
+  wordmark: 'SpaceGrotesk_700Bold',
 } as const;
 
 export const TypeScale = {

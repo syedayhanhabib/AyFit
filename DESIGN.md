@@ -186,22 +186,51 @@ Flow stays as-is (it works): muscle picker → exercise list → per-set
 logging. This is a visual/interaction pass, not a rebuild.
 
 Non-negotiables regardless of your specific complaints:
-- "Add set" primary action in the bottom thumb zone.
-- Previous session's numbers for this exercise visible *before* you log
-  (so you know what you're trying to beat — this is the whole point of
-  progressive overload, it should be the first thing you see).
 - Warm-up toggle discoverable but visually recessive.
 - Set ladder stacking behavior as described above.
+
+Superseded by Phase 1.5 real-device findings (see below) — no longer
+current:
+- ~~"Add set" primary action in the bottom thumb zone.~~ Real-device use
+  showed the opposite problem: as the set ladder grows, a bottom-pinned
+  input scrolls out of reach relative to the header, not into a thumb
+  zone. The weight/reps/RPE input + warm-up toggle + Add Set now live in
+  a card pinned just below the header instead, so they never scroll away
+  regardless of how many sets are logged.
+- ~~Previous session's numbers for this exercise visible *before* you
+  log.~~ In practice the number you're actively beating each set is your
+  own e1RM-this-session (already visible, already updating live) — LAST
+  TIME is reference context you check occasionally, not something that
+  needs to be the first thing on screen. It now trails at the bottom of
+  the scroll, after the set ladder.
 
 **Phase 1 is complete and pushed.** The redesign above shipped (v3 color
 system, `src/constants/track-theme.ts` — see `CLAUDE.md`'s Current
 state).
 
-**Phase 1.5 — real-device polish pass (queued, not yet scoped):**
-running as a standalone installed build (EAS APK, not Expo Go/web)
-surfaced issues that weren't visible before. This is targeted polish on
-an already-shipped design, not a redo of Phase 1 — specific pain points
-to be filled in during the next chat.
+**Phase 1.5 — real-device polish pass, batch 1: complete and pushed.**
+Running as a standalone installed build (EAS APK, not Expo Go/web)
+surfaced issues that weren't visible before:
+- Tab bar: Android's BottomNavigationView was collapsing to
+  selected-label-only with 4 tabs, and two of the four tab icons were
+  placeholder duplicates. Fixed via `labelVisibilityMode="labeled"` +
+  real MaterialCommunityIcons per tab.
+- Header safe-area: the per-set logging screen's header had no
+  safe-area handling, colliding with the status bar/notch on-device
+  (back button wasn't reliably tappable). Now wrapped in `SafeAreaView`
+  like Track/Summary already were.
+- Screen order flip: see the superseded non-negotiables above — input
+  card now leads (pinned below the header), LAST TIME now trails (end
+  of scroll).
+- Numeral size: the live weight/reps/RPE input used the Numeral-sm
+  (20/24) token, sized for *already-logged* past sets, not the value
+  you're actively typing. Bumped to 28/32 — Numeral-lg (40/44) felt
+  oversized squeezed into the three-field stepper row.
+- Wordmark got its real lettering treatment (see Open decisions below)
+  and the glossary/InfoTip system is now fully wired on Track's logging
+  screen (RPE + warm-up tips added, e1RM tip's copy expanded).
+
+Batch 2+ (further real-device pain points) not yet scoped.
 
 ### Summary — Phase 2 (new build)
 
@@ -221,15 +250,15 @@ Priority order top-to-bottom (unchanged from `CLAUDE.md`):
 
 ## Open decisions — resolve before/at the design tool session
 
-- [x] **Track pain points** — Phase 1 shipped; Phase 1.5 (real-device
-  polish pass) is queued to capture the pain points that only surfaced
-  once running as a standalone installed build. See the Track — Phase 1
-  section above.
+- [x] **Track pain points** — Phase 1 shipped; Phase 1.5 batch 1 (see
+  the Track — Phase 1 section above) captured and fixed the first round
+  of real-device pain points. Further batches not yet scoped.
 - [ ] **Dark-mode-only vs. dark+light** — this doc assumes dark-first as
   the practical default for gym lighting/glare. Flag if you want a light
   mode too.
-- [ ] **Wordmark** — does "AyFit" get any real lettering treatment, or
-  stay plain text in the header?
+- [x] **Wordmark** — "AyFit" now gets real lettering treatment: Space
+  Grotesk bold, chalk-white-to-brand-purple diagonal gradient fill
+  (`src/components/wordmark.tsx`).
 
 ---
 

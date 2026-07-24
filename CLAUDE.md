@@ -3,8 +3,8 @@
 ## Current state
 _Last updated: 2026-07-24_
 
-- **Last commit:** 9de41e2 (wire getRecentPRs() into recent-prs-card.tsx)
-- **Pushed:** yes, origin/master
+- **Last commit:** c0a3f83 (wire RPE InfoTip, bump icon affordance, expand glossary copy)
+- **Pushed:** no, 4 commits ahead of origin/master (Phase 1.5 batch 1)
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
   reopening an exercise mid-session now reads back today's already-logged
@@ -112,9 +112,34 @@ _Last updated: 2026-07-24_
   real Android device and confirmed working end-to-end with a real
   write (a shoulder exercise set logged and read back correctly),
   independent of Expo Go/Metro/shared wifi for the first time.
-- **Next:** A real-device UI polish pass is next — issues surfaced
-  only once running standalone on-device, not visible during Expo
-  Go/web testing (specifics to be scoped in a new chat). After that:
+  **Phase 1.5 real-device polish pass, batch 1 is done** (four commits,
+  not yet pushed): (1) tab bar — labels now always render for all four
+  tabs (`labelVisibilityMode="labeled"` fixes Android's 4-tab
+  selected-only collapse), real MaterialCommunityIcons per tab
+  replacing two duplicated placeholder assets. (2) Shared `Wordmark`
+  component (`src/components/wordmark.tsx`) replaces "AYFIT" duplicated
+  in Track/Summary headers — mixed-case "AyFit", Space Grotesk bold
+  (new font load in `_layout.tsx`), chalk-white-to-brand-purple
+  diagonal gradient via expo-linear-gradient + masked-view (both
+  already installed); web's masked-view shim has no real masking so it
+  gets a static brand-purple fallback there, irrelevant on native.
+  Track's header copy: "Track — pick a muscle" → "Track your workout —
+  pick a muscle". (3) Per-set logging screen: wrapped in `SafeAreaView`
+  (header was colliding with the status bar/notch on-device, back
+  button unreliable); reordered top-to-bottom to header → input card
+  (weight/reps/RPE + warm-up + Add Set, now pinned just below the
+  header instead of a scroll-away bottom footer) → e1RM this session →
+  set ladder → LAST TIME (now trails, was first); live input numeral
+  bumped 19px → 28/32 with wider input boxes. See DESIGN.md's Track —
+  Phase 1.5 section — this supersedes two of Phase 1's original
+  non-negotiables (bottom-pinned Add Set, LAST TIME visible first).
+  (4) Glossary/InfoTip: RPE and warm-up tips wired in on the logging
+  screen (glossary entries existed but weren't rendered), InfoTip icon
+  bumped 16px → 20px with a 48pt touch target (hitSlop 14), dotted
+  underline added under each tipped term label, RPE/e1RM glossary copy
+  replaced with expanded verified text.
+- **Next:** Real-device polish batch 2 (further on-device pain points,
+  not yet scoped) or push this batch first — your call. After that:
   offline support (writes currently fail outright with no
   connectivity, no local queue/sync-on-reconnect). Then: auth + RLS +
   a second EAS build before sharing the APK with friends. Track's live

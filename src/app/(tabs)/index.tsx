@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     color: TrackColors.textMuted,
     textTransform: 'uppercase',
-    marginTop: 4,
+    marginTop: 9,
   },
   list: { paddingBottom: 24 },
   row: {

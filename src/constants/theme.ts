@@ -78,6 +78,8 @@ export const Palette = {
   textMuted: '#55585C',
   brand: '#B14EFF',
   brandPressed: '#9A3AE0',
+  // Dark end of the wordmark's diagonal gradient (src/components/wordmark.tsx) — no white/light stop.
+  brandDeep: '#6B1FB8',
   prGold: '#FFC738',
 } as const;
 

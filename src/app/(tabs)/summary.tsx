@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     color: Palette.textMuted,
     textTransform: 'uppercase',
-    marginTop: 4,
+    marginTop: 9,
   },
   list: { gap: 16, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
 });

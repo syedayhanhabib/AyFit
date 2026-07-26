@@ -22,7 +22,8 @@ import { InfoTip } from '@/components/info-tip';
 import { BackButton } from '@/components/track/back-button';
 import { CategoryDot } from '@/components/track/category-dot';
 import { SetRow } from '@/components/track/set-row';
-import { StepperField } from '@/components/track/stepper-field';
+import { ValueChip } from '@/components/track/value-chip';
+import { WheelPickerModal } from '@/components/track/wheel-picker-modal';
 import { WarmupPill } from '@/components/track/warmup-pill';
 import { CategoryAccent, TrackColors, TrackFonts } from '@/constants/track-theme';
 import type { LoggedSet } from '@/types/logged-set';
@@ -42,6 +43,31 @@ function parseValidRpe(input: string): number | undefined {
   const value = Number(input.replace(',', '.'));
   return input.trim() !== '' && value >= 1 && value <= 10 ? value : undefined;
 }
+
+function range(from: number, to: number, step: number): number[] {
+  const out: number[] = [];
+  // Accumulating `from + i * step` rather than `current += step` keeps 2.5 and
+  // 0.5 steps off floating-point drift, so values stay exactly representable
+  // and `fmt` never renders something like 57.50000000000001.
+  for (let i = 0; from + i * step <= to; i++) out.push(from + i * step);
+  return out;
+}
+
+// Every value on every wheel passes the validators above, deliberately: the
+// weight wheel starts at 2.5 rather than 0 because `parseValidWeight` rejects 0
+// (it always has), so a 0 stop would be a selectable value that silently leaves
+// "Add set" disabled. Validation itself is untouched by this row's redesign.
+const WEIGHT_VALUES = range(2.5, 300, 2.5);
+const REPS_VALUES = range(1, 50, 1);
+const RPE_VALUES = range(1, 10, 0.5);
+
+// Where each wheel opens when its field is still empty — same starting points
+// the old stepper buttons used as their `base` when stepping from empty.
+const WEIGHT_FALLBACK = 60;
+const REPS_FALLBACK = 5;
+const RPE_FALLBACK = 8;
+
+type ActiveField = 'weight' | 'reps' | 'rpe';
 
 export default function ExerciseScreen() {
   const { exerciseId, name, category } = useLocalSearchParams<{
@@ -85,6 +111,10 @@ export default function ExerciseScreen() {
   const [repsInput, setRepsInput] = useState('');
   const [rpeInput, setRpeInput] = useState('');
   const [isWarmup, setIsWarmup] = useState(false);
+  // Which field's wheel picker is open, if any. The modal is rendered
+  // conditionally off this rather than kept mounted behind `visible={false}`,
+  // so each open re-seeds the wheel from the field's current value.
+  const [activeField, setActiveField] = useState<ActiveField | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -129,19 +159,11 @@ export default function ExerciseScreen() {
   const hasInput = weightInput !== '' || repsInput !== '' || rpeInput !== '';
   const e1rm = bestE1rm(sets);
 
-  function stepWeight(delta: number) {
-    const base = weight ?? 60;
-    setWeightInput(fmt(Math.max(0, Math.round((base + delta) * 2) / 2)));
-  }
-
-  function stepReps(delta: number) {
-    const base = reps ?? 5;
-    setRepsInput(String(Math.max(1, base + delta)));
-  }
-
-  function stepRpe(delta: number) {
-    const base = rpe ?? 8;
-    setRpeInput(fmt(Math.min(10, Math.max(1, Math.round((base + delta) * 2) / 2))));
+  function handlePickerConfirm(value: number) {
+    if (activeField === 'weight') setWeightInput(fmt(value));
+    else if (activeField === 'reps') setRepsInput(String(value));
+    else if (activeField === 'rpe') setRpeInput(fmt(value));
+    setActiveField(null);
   }
 
   async function handleAddSet() {
@@ -218,36 +240,22 @@ export default function ExerciseScreen() {
                   )}
                   {saveError && <Text style={styles.errorText}>{saveError}</Text>}
 
-                  <View style={styles.stepperRow}>
-                    <StepperField
+                  <View style={styles.chipRow}>
+                    <ValueChip
                       label="Kg"
-                      flex={1.3}
+                      // Weight carries the longest values (up to "297.5"); reps and
+                      // RPE never exceed 3 chars, so they can afford to give it room.
+                      flex={1.5}
                       value={weightInput}
-                      onChangeText={setWeightInput}
-                      onDecrement={() => stepWeight(-2.5)}
-                      onIncrement={() => stepWeight(2.5)}
-                      keyboardType="decimal-pad"
-                      inputWidth={66}
+                      onPress={() => setActiveField('weight')}
                     />
-                    <StepperField
-                      label="Reps"
-                      value={repsInput}
-                      onChangeText={setRepsInput}
-                      onDecrement={() => stepReps(-1)}
-                      onIncrement={() => stepReps(1)}
-                      keyboardType="number-pad"
-                      inputWidth={40}
-                    />
-                    <StepperField
+                    <ValueChip label="Reps" value={repsInput} onPress={() => setActiveField('reps')} />
+                    <ValueChip
                       label="RPE"
                       labelStyle={styles.dottedUnderline}
                       icon={<InfoTip term="rpe" />}
                       value={rpeInput}
-                      onChangeText={setRpeInput}
-                      onDecrement={() => stepRpe(-0.5)}
-                      onIncrement={() => stepRpe(0.5)}
-                      keyboardType="decimal-pad"
-                      inputWidth={40}
+                      onPress={() => setActiveField('rpe')}
                     />
                   </View>
 
@@ -308,6 +316,38 @@ export default function ExerciseScreen() {
                     </View>
                   )}
                 </ScrollView>
+
+                {activeField === 'weight' && (
+                  <WheelPickerModal
+                    title="Weight"
+                    unit="kg"
+                    values={WEIGHT_VALUES}
+                    value={weight}
+                    fallback={WEIGHT_FALLBACK}
+                    onConfirm={handlePickerConfirm}
+                    onCancel={() => setActiveField(null)}
+                  />
+                )}
+                {activeField === 'reps' && (
+                  <WheelPickerModal
+                    title="Reps"
+                    values={REPS_VALUES}
+                    value={reps}
+                    fallback={REPS_FALLBACK}
+                    onConfirm={handlePickerConfirm}
+                    onCancel={() => setActiveField(null)}
+                  />
+                )}
+                {activeField === 'rpe' && (
+                  <WheelPickerModal
+                    title="RPE"
+                    values={RPE_VALUES}
+                    value={rpe}
+                    fallback={RPE_FALLBACK}
+                    onConfirm={handlePickerConfirm}
+                    onCancel={() => setActiveField(null)}
+                  />
+                )}
               </>
             )}
           </KeyboardAvoidingView>
@@ -408,7 +448,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TrackColors.border,
   },
-  stepperRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8, marginBottom: 10 },
+  chipRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8, marginBottom: 10 },
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   warmupGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   addButton: {

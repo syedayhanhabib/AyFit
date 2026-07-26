@@ -158,8 +158,14 @@ Nothing else animates. Fast and utilitarian beats polished-but-slow here.
 
 ## Component patterns
 
-- **Numeric input (weight/reps/RPE):** large tap targets, stepper
-  affordance alongside direct entry, decimal normalization (already built).
+- **Numeric input (weight/reps/RPE):** three large tappable **value chips**
+  in a row — label above, big monospace value below, no controls embedded in
+  the row. Tapping one opens a **snap-scrolling wheel picker** (native
+  alarm-picker feel: large digits, one value locked in a centered band,
+  neighbours dimmed) for that field alone. Kg steps 2.5 (2.5–300), reps step
+  1 (1–50), RPE steps 0.5 (1–10).
+  ~~Stepper affordance alongside direct entry.~~ Superseded in Phase 1.5
+  batch 3 — see the Track section below for why.
 - **Warm-up set:** muted text color, smaller numeral scale, no monospace
   emphasis — recedes optically without being hidden.
 - **e1RM readout:** smoothed sparkline or trend arrow next to the number,
@@ -225,12 +231,43 @@ surfaced issues that weren't visible before:
 - Numeral size: the live weight/reps/RPE input used the Numeral-sm
   (20/24) token, sized for *already-logged* past sets, not the value
   you're actively typing. Bumped to 28/32 — Numeral-lg (40/44) felt
-  oversized squeezed into the three-field stepper row.
+  oversized squeezed into the three-field stepper row. (That stepper row
+  itself is gone as of batch 3, below; the 28px numeral survived it.)
 - Wordmark got its real lettering treatment (see Open decisions below)
   and the glossary/InfoTip system is now fully wired on Track's logging
   screen (RPE + warm-up tips added, e1RM tip's copy expanded).
 
-Batch 2+ (further real-device pain points) not yet scoped.
+**Phase 1.5 — batch 3: the stepper row is gone.** The Kg/Reps/RPE input
+is now three tappable value chips + a wheel-picker modal per field (see
+**Numeric input** under Component patterns above).
+
+Why the stepper row was abandoned rather than tuned again:
+- It had already been squeezed across two prior rounds — widening the
+  input boxes, re-balancing the flex ratios, dropping the separators —
+  and still didn't reliably fit on a real device. Three
+  `label + minus + textbox + plus` clusters in one row is ~9 hit targets
+  and 3 text fields competing for ~300pt; that's a structural problem
+  with the pattern, not a width value left to find. Removing the
+  embedded +/- controls removes the edge-cramming entirely: the chip row
+  now has 3 hit targets and nothing to squeeze.
+- The steppers' `TextInput`s meant the real input path was the numeric
+  keyboard, and a scroll-wheel (alarm/time-picker style) was explicitly
+  preferred over typing.
+
+Consequences worth keeping in mind:
+- There is no free-text numeric entry on this screen any more, so every
+  loggable value must exist as a stop on some wheel. The wheels are
+  therefore defined so that *every* value on them passes the screen's
+  existing validators — notably the weight wheel starts at 2.5, not 0,
+  because 0 has always failed validation and a selectable-but-invalid
+  stop would silently disable "Add set". Validation logic itself was not
+  touched by this change.
+- Values off-grid (e.g. 61kg, RPE 7.25) are no longer expressible. That's
+  accepted: the grid matches real plate math and the RPE scale's useful
+  resolution.
+
+Batch 2 was skipped in favour of this; further real-device pain points
+beyond it are not yet scoped.
 
 ### Summary — Phase 2 (new build)
 

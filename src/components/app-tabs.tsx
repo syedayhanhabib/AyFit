@@ -16,6 +16,17 @@ export default function AppTabs() {
       labelStyle={{
         default: { color: Palette.textSecondary },
         selected: { color: Palette.brand, fontWeight: '600' },
+      }}
+      // Labels were tinting on selection but icons weren't: `labelStyle` is the
+      // only prop that reads a nested `{default, selected}` for *text*, and the
+      // icon color has its own, separate prop that was never set — so icons fell
+      // through to Android's `onSurfaceVariant` default in both states.
+      // `iconColor` takes the same `{default, selected}` shape (NativeTabsProps
+      // in expo-router/build/native-tabs/types.d.ts), and gets split into
+      // `iconColor`/`selectedIconColor` internally.
+      iconColor={{
+        default: Palette.textSecondary,
+        selected: Palette.brand,
       }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Track</NativeTabs.Trigger.Label>

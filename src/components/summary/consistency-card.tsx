@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
@@ -15,19 +16,26 @@ export function ConsistencyCard() {
   // null = not yet fetched.
   const [consistency, setConsistency] = useState<Consistency | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getConsistency()
-      .then(result => {
-        if (!cancelled) setConsistency(result);
-      })
-      .catch(() => {
-        if (!cancelled) setConsistency({ sessionsThisWeek: 0, weeklyStreak: 0, completedDays: ALL_FALSE_WEEK });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Focus, not mount: the tab navigator keeps this screen mounted in the
+  // background, so a mount-only effect never re-ran and only an app relaunch
+  // picked up sets logged on Track. Note this deliberately does NOT reset
+  // `consistency` to null first — the previous numbers stay on screen until the
+  // new ones land, so tabbing in doesn't flash a spinner over existing data.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getConsistency()
+        .then(result => {
+          if (!cancelled) setConsistency(result);
+        })
+        .catch(() => {
+          if (!cancelled) setConsistency({ sessionsThisWeek: 0, weeklyStreak: 0, completedDays: ALL_FALSE_WEEK });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   return (
     <View style={styles.card}>

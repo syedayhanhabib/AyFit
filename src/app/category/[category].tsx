@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,9 +34,12 @@ export default function CategoryScreen() {
       .catch(() => setError('Could not load exercises. Check your connection and try again.'));
   }, [category]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Focus, not mount: this screen stays mounted underneath the logging screen
+  // that gets pushed on top of it, so after logging a set and hitting back, the
+  // per-row "last logged" subtitles were showing pre-workout values until the
+  // app relaunched — the same mount-only bug as Summary's cards, just reached
+  // by back-navigation instead of a tab switch.
+  useFocusEffect(load);
 
   function handleRetry() {
     setError(null);

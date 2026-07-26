@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
@@ -17,19 +18,22 @@ export function VolumeCard() {
   // renders bars — there's no "hide the card" case like Progression has.
   const [volume, setVolume] = useState<Record<CategoryName, number> | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getVolumeByMuscle()
-      .then(result => {
-        if (!cancelled) setVolume(result);
-      })
-      .catch(() => {
-        if (!cancelled) setVolume({ Chest: 0, Back: 0, Arms: 0, Legs: 0, Shoulders: 0 });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Focus, not mount — see the note in consistency-card.tsx.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getVolumeByMuscle()
+        .then(result => {
+          if (!cancelled) setVolume(result);
+        })
+        .catch(() => {
+          if (!cancelled) setVolume({ Chest: 0, Back: 0, Arms: 0, Legs: 0, Shoulders: 0 });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   // A brand-new week with nothing logged yet means every category is 0 —
   // guard against dividing by a zero max (NaN heights) by falling straight

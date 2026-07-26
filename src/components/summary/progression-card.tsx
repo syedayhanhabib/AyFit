@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
 
@@ -95,38 +96,58 @@ export function ProgressionCard() {
   // the new fetch resolves, so the chart never shows a half-updated state).
   const [history, setHistory] = useState<E1rmPoint[] | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getExercisesWithHistory()
-      .then(result => {
-        if (cancelled) return;
-        setExercises(result);
-        // Default selection = most-recently-logged exercise (index 0 of the
-        // real list), not a hardcoded name.
-        if (result.length > 0) setSelectedExerciseId(result[0].id);
-      })
-      .catch(() => {
-        if (!cancelled) setExercises([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Focus, not mount — see the note in consistency-card.tsx. Refetching the
+  // list matters here beyond freshness: an exercise logged for the very first
+  // time only appears as a chip at all once this re-runs.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getExercisesWithHistory()
+        .then(result => {
+          if (cancelled) return;
+          setExercises(result);
+          // Default selection = most-recently-logged exercise (index 0 of the
+          // real list), not a hardcoded name — but only *pick* a default when
+          // there isn't a valid one already. Unconditionally selecting index 0
+          // would silently reset the user's chosen chip every time they tabbed
+          // away and back, which the old mount-only effect never had to
+          // consider because it ran exactly once. The functional updater keeps
+          // `selectedExerciseId` out of this callback's deps, so choosing a
+          // chip doesn't re-trigger the whole list fetch.
+          setSelectedExerciseId(current =>
+            current && result.some(exercise => exercise.id === current)
+              ? current
+              : (result[0]?.id ?? null),
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setExercises([]);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
-  useEffect(() => {
-    if (!selectedExerciseId) return;
-    let cancelled = false;
-    getE1rmHistory(selectedExerciseId)
-      .then(result => {
-        if (!cancelled) setHistory(result);
-      })
-      .catch(() => {
-        if (!cancelled) setHistory([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedExerciseId]);
+  // Keyed on the selection, so this re-runs both on focus and when a different
+  // chip is picked — useFocusEffect re-runs whenever the memoized callback's
+  // identity changes, which is what makes one hook cover both cases.
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectedExerciseId) return;
+      let cancelled = false;
+      getE1rmHistory(selectedExerciseId)
+        .then(result => {
+          if (!cancelled) setHistory(result);
+        })
+        .catch(() => {
+          if (!cancelled) setHistory([]);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [selectedExerciseId]),
+  );
 
   const chartData = useMemo(() => {
     if (!history || history.length === 0) return null;

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -13,19 +14,24 @@ export function RecentPrsCard() {
   // null = not yet fetched.
   const [prs, setPrs] = useState<PrEvent[] | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getRecentPRs()
-      .then(result => {
-        if (!cancelled) setPrs(result);
-      })
-      .catch(() => {
-        if (!cancelled) setPrs([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Focus, not mount — see the note in consistency-card.tsx. This is the card
+  // the bug was most visible on: a PR earned on Track stayed invisible here
+  // until relaunch, even though getRecentPRs() computes it live every call.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getRecentPRs()
+        .then(result => {
+          if (!cancelled) setPrs(result);
+        })
+        .catch(() => {
+          if (!cancelled) setPrs([]);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   return (
     <View style={styles.card}>

@@ -78,7 +78,8 @@ export const Palette = {
   textMuted: '#55585C',
   brand: '#B14EFF',
   brandPressed: '#9A3AE0',
-  // Dark end of the wordmark's diagonal gradient (src/components/wordmark.tsx) — no white/light stop.
+  // Start (top-left) of the wordmark's diagonal gradient, which runs deep ->
+  // brand (src/components/wordmark.tsx) — no white/light stop.
   brandDeep: '#6B1FB8',
   prGold: '#FFC738',
 } as const;
@@ -105,7 +106,11 @@ export const Typefaces = {
   uiSemiBold: 'Inter_600SemiBold',
   uiBold: 'Inter_700Bold',
   uiExtraBold: 'Inter_800ExtraBold',
-  wordmark: 'SpaceGrotesk_700Bold',
+  // Display face, wordmark only — nothing else in the app should use it.
+  // (Space Grotesk held this slot first; @expo-google-fonts/space-grotesk is
+  // still installed so swapping back is a one-line change if Unbounded's very
+  // wide letterforms turn out wrong for a logotype on-device.)
+  wordmark: 'Unbounded_800ExtraBold',
 } as const;
 
 export const TypeScale = {

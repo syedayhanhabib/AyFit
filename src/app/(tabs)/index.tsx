@@ -12,7 +12,7 @@ export default function TrackScreen() {
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
-          <Wordmark size={22} />
+          <Wordmark size={30} />
           <Text style={styles.eyebrow}>Track your workout — pick a muscle</Text>
         </View>
         <ScrollView contentContainerStyle={styles.list}>
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 20, paddingTop: 4 },
   eyebrow: {
     fontFamily: TrackFonts.numeralMedium,
-    fontSize: 12,
+    fontSize: 14,
     letterSpacing: 2,
     color: TrackColors.textMuted,
     textTransform: 'uppercase',

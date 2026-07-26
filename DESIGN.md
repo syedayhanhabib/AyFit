@@ -256,9 +256,17 @@ Priority order top-to-bottom (unchanged from `CLAUDE.md`):
 - [ ] **Dark-mode-only vs. dark+light** — this doc assumes dark-first as
   the practical default for gym lighting/glare. Flag if you want a light
   mode too.
-- [x] **Wordmark** — "AyFit" now gets real lettering treatment: Space
-  Grotesk bold, chalk-white-to-brand-purple diagonal gradient fill
-  (`src/components/wordmark.tsx`).
+- [x] **Wordmark** — "AyFit" now gets real lettering treatment:
+  **Unbounded ExtraBold**, deep-purple-to-brand-purple diagonal gradient
+  fill (`src/components/wordmark.tsx`). Revised in Phase 1.5 batch 3:
+  the first pass was Space Grotesk bold with the gradient running
+  light → dark, which faded out toward the tail of the word; it now runs
+  dark → light along the same diagonal so it brightens as it reads. Font
+  swapped for a display face with more character than Space Grotesk;
+  Unbounded's letterforms are wide enough that the wordmark's tracking
+  drops to 0. Rendered at 30 on Track and 26 on Summary (up from 22/20 —
+  both headers had spare vertical space), with the eyebrow line under it
+  at 14 (up from 12).
 
 ---
 

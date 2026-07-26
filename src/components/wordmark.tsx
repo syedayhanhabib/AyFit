@@ -6,7 +6,7 @@ import { Palette, Typefaces } from '@/constants/theme';
 
 type WordmarkProps = { size?: number };
 
-export function Wordmark({ size = 22 }: WordmarkProps) {
+export function Wordmark({ size = 26 }: WordmarkProps) {
   const textStyle = [styles.text, { fontSize: size, lineHeight: size * 1.2 }];
   // MaskedView composites two separately-rendered trees (the mask shape and
   // the gradient) — without an explicit height on both, they don't share a
@@ -18,7 +18,10 @@ export function Wordmark({ size = 22 }: WordmarkProps) {
     <MaskedView style={boxStyle} maskElement={<Text style={textStyle}>AyFit</Text>}>
       <LinearGradient
         style={boxStyle}
-        colors={[Palette.brand, Palette.brandDeep]}
+        // Dark-to-light along the diagonal: the deep stop anchors the top-left
+        // (where the eye lands first) and it brightens into the brand purple,
+        // rather than fading out toward the tail of the word.
+        colors={[Palette.brandDeep, Palette.brand]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
@@ -31,7 +34,9 @@ export function Wordmark({ size = 22 }: WordmarkProps) {
 const styles = StyleSheet.create({
   text: {
     fontFamily: Typefaces.wordmark,
-    letterSpacing: 0.5,
+    // Unbounded's letterforms are already very wide, so the extra positive
+    // tracking that Space Grotesk needed reads as gappy here — pulled to 0.
+    letterSpacing: 0,
     // Native MaskedView only uses this element's alpha as the gradient's
     // mask shape and discards its color — but the web shim has no real
     // masking support and renders this element as-is, so give it a solid

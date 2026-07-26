@@ -15,7 +15,7 @@ import {
   JetBrainsMono_700Bold,
   useFonts,
 } from '@expo-google-fonts/jetbrains-mono';
-import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+import { Unbounded_800ExtraBold } from '@expo-google-fonts/unbounded';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -30,7 +30,7 @@ export default function RootLayout() {
     JetBrainsMono_400Regular,
     JetBrainsMono_500Medium,
     JetBrainsMono_700Bold,
-    SpaceGrotesk_700Bold,
+    Unbounded_800ExtraBold,
   });
 
   useEffect(() => {

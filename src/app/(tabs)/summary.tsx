@@ -13,7 +13,7 @@ export default function SummaryScreen() {
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
-          <Wordmark size={20} />
+          <Wordmark size={26} />
           <Text style={styles.eyebrow}>Summary</Text>
         </View>
         <ScrollView contentContainerStyle={styles.list}>
@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 4 },
   eyebrow: {
     fontFamily: Typefaces.numeralMedium,
-    fontSize: 12,
+    fontSize: 14,
     letterSpacing: 2,
     color: Palette.textMuted,
     textTransform: 'uppercase',

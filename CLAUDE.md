@@ -1,10 +1,11 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-24_
+_Last updated: 2026-07-26_
 
-- **Last commit:** c0a3f83 (wire RPE InfoTip, bump icon affordance, expand glossary copy)
-- **Pushed:** no, 4 commits ahead of origin/master (Phase 1.5 batch 1)
+- **Last commit:** d2b3dad (replace stepper row with value chips + wheel-picker modal)
+- **Pushed:** no, 11 commits ahead of origin/master (Phase 1.5 batches 1–3).
+  This is getting long — pushing is overdue.
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
   reopening an exercise mid-session now reads back today's already-logged
@@ -138,12 +139,50 @@ _Last updated: 2026-07-24_
   bumped 16px → 20px with a 48pt touch target (hitSlop 14), dotted
   underline added under each tipped term label, RPE/e1RM glossary copy
   replaced with expanded verified text.
-- **Next:** Real-device polish batch 2 (further on-device pain points,
-  not yet scoped) or push this batch first — your call. After that:
-  offline support (writes currently fail outright with no
-  connectivity, no local queue/sync-on-reconnect). Then: auth + RLS +
-  a second EAS build before sharing the APK with friends. Track's live
-  PR gold-flash remains parked/deferred as before, not scoped yet.
+  **Phase 1.5 batch 3 is done** (three commits, also unpushed). Batch 2
+  was skipped in favour of it. (1) Wordmark: gradient direction flipped
+  to deep→brand (`Palette.brandDeep` first) so it brightens as it reads
+  instead of fading out at the tail; font swapped Space Grotesk bold →
+  **Unbounded ExtraBold** (`@expo-google-fonts/unbounded`, new font load
+  in `_layout.tsx`) with tracking pulled 0.5 → 0 because Unbounded's
+  letterforms are already wide; sizes 22 → 30 (Track) and 20 → 26
+  (Summary), eyebrow line 12 → 14 on both. `@expo-google-fonts/space-grotesk`
+  is left installed on purpose so reverting the face is a one-liner.
+  (2) Tab bar icons now tint on selection. Root cause: only *labels*
+  were ever styled — `labelStyle`'s nested `{default, selected}` covers
+  text only, and icon color is a **separate `NativeTabs` prop**
+  (`iconColor`, same `{default, selected}` shape, split internally into
+  `iconColor`/`selectedIconColor`) that was never set, so icons fell
+  through to Android's `onSurfaceVariant` in both states. Confirmed
+  against expo-router's real type defs rather than guessed. Native-only:
+  web uses `app-tabs.web.tsx`, which never touches `NativeTabs`, so this
+  fix is unverified until the next device run.
+  (3) **The Kg/Reps/RPE stepper row is gone**, replaced by three
+  tappable `ValueChip`s (`src/components/track/value-chip.tsx`) plus a
+  per-field `WheelPickerModal`
+  (`src/components/track/wheel-picker-modal.tsx`) — a snap-scrolling
+  alarm-picker-style wheel, one field at a time. `StepperField` was
+  deleted outright (`[exerciseId].tsx` was its only consumer, grepped).
+  Wheels: Kg 2.5–300 @2.5, reps 1–50 @1, RPE 1–10 @0.5; empty fields
+  open at the old stepper bases (60/5/8) and render "—" rather than
+  being pre-filled. Validation (`parseValid*`, `isValid`, Add Set
+  enable/disable) is **untouched** — a UI-layer swap over the same
+  `weightInput`/`repsInput`/`rpeInput` state. The weight wheel starts at
+  2.5 rather than 0 specifically because 0 has always failed
+  `parseValidWeight`, so a 0 stop would be selectable-but-invalid and
+  silently keep Add Set disabled. See DESIGN.md's Track Phase 1.5 batch 3
+  section for the full rationale plus its two accepted consequences (no
+  free-text numeric entry on this screen any more; off-grid values like
+  61kg or RPE 7.25 are no longer expressible).
+- **Next:** **Push these 11 commits** — that's the top of the list now,
+  three batches deep is well past comfortable. Then a real-device pass
+  to confirm what web structurally cannot: the tab-bar icon tint (web
+  never renders `NativeTabs`) and the wheel's scroll-snap *feel*
+  (momentum, snap timing). After that: offline support (writes currently
+  fail outright with no connectivity, no local queue/sync-on-reconnect).
+  Then: auth + RLS + a second EAS build before sharing the APK with
+  friends. Track's live PR gold-flash remains parked/deferred as before,
+  not scoped yet.
 - **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
   `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
   shared `src/utils/local-date.ts`. Not urgent — each is currently used
@@ -304,4 +343,18 @@ OUT (roadmap):
   excluding the row, silently including non-matching top-level rows.
   (Caught in an ad-hoc verification script during Volume work — the
   shipped `getVolumeByMuscle` already used `!inner` correctly.)
+- Don't rely on `FlatList`'s `initialScrollIndex` (or a forwarded
+  `onContentSizeChange`) inside a `Modal`. VirtualizedList drives both off
+  its `_onContentSizeChange`, which react-native-web wires to the content
+  container's `onLayout` — and that never fires in a modal, so the list
+  silently stays at offset 0 while still *rendering* the right window,
+  which looks like a styling bug rather than a scroll bug. Set the offset
+  yourself in `useLayoutEffect` (see `wheel-picker-modal.tsx`). Related:
+  `requestAnimationFrame` is not a safe substitute — it never fires at all
+  in a browser that isn't compositing frames, which is exactly the case in
+  the automated preview, so anything built on rAF is unverifiable there.
+- Re-run `npx tsc --noEmit` after *every* edit in a multi-step refactor,
+  not just at the end of one. Deleting a function while leaving a prop
+  that referenced it type-checked fine at the previous checkpoint and blew
+  up only as a runtime white-screen; tsc would have caught it instantly.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

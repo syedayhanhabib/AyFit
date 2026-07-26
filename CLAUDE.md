@@ -1,11 +1,12 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-26_
+_Last updated: 2026-07-27_
 
-- **Last commit:** d2b3dad (replace stepper row with value chips + wheel-picker modal)
-- **Pushed:** no, 11 commits ahead of origin/master (Phase 1.5 batches 1–3).
-  This is getting long — pushing is overdue.
+- **Last commit:** fd64f34 (refetch Summary + exercise-list data on focus, not just on mount)
+- **Pushed:** Phase 1.5 batches 1–3 are pushed (through 9c4dab5). The
+  focus-refetch fix on top of that is **not** pushed yet — 1 commit ahead
+  of origin/master.
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
   reopening an exercise mid-session now reads back today's already-logged
@@ -174,15 +175,44 @@ _Last updated: 2026-07-26_
   section for the full rationale plus its two accepted consequences (no
   free-text numeric entry on this screen any more; off-grid values like
   61kg or RPE 7.25 are no longer expressible).
-- **Next:** **Push these 11 commits** — that's the top of the list now,
-  three batches deep is well past comfortable. Then a real-device pass
-  to confirm what web structurally cannot: the tab-bar icon tint (web
-  never renders `NativeTabs`) and the wheel's scroll-snap *feel*
-  (momentum, snap timing). After that: offline support (writes currently
-  fail outright with no connectivity, no local queue/sync-on-reconnect).
-  Then: auth + RLS + a second EAS build before sharing the APK with
-  friends. Track's live PR gold-flash remains parked/deferred as before,
-  not scoped yet.
+  **Stale-data-until-relaunch bug is fixed** (`fd64f34`). Symptom: a set
+  logged on Track didn't appear on Summary until the app was force-closed
+  and reopened. Cause was *when* fetches ran, not what they fetched — all
+  four Summary cards used `useEffect(..., [])`, and the tab navigator keeps
+  every tab's screen mounted (native: `NativeTabsView.android.js` maps over
+  all tabs and `ScreenContent` calls `contentRenderer()` with no focus gate;
+  web: `TabSlot`'s `loaded` map persists and `unmountOnBlur` is off), so
+  there was never a second mount to re-trigger them. Now on
+  `useFocusEffect` — imported from **`expo-router`**, which ships its own
+  fork of it, rather than `@react-navigation/native` directly. Its deps are
+  `[effect, navigation, …]`, so a `useCallback` keyed on state re-runs on
+  focus *and* on that state changing; that's how Progression's
+  selection-keyed history fetch needs only one hook. `summary-repo.ts` /
+  `workout-set-repo.ts` were **not** touched — computed-live was already
+  right. Two notes: (a) **Calendar had no bug** — `(tabs)/calendar.tsx` is
+  still a placeholder that fetches nothing and there is no
+  `calendar-repo.ts`, so there was nothing to refetch; (b) the **exercise
+  list** (`category/[category].tsx`) *did* have it, reached by
+  back-navigation instead of a tab switch (it stays mounted under the pushed
+  logging screen, so its "last logged" subtitles showed pre-workout values)
+  — fixed in the same commit. Progression also needed its default-selection
+  logic guarded: re-running on every focus would otherwise reset the user's
+  chosen exercise chip, so it now only picks a default when there isn't a
+  valid one already. Cards deliberately don't reset to `null` before
+  refetching, so tabbing in doesn't flash a spinner over data already on
+  screen. Accepted tradeoff: each focus of Summary issues 5 queries; no
+  cache layer, correctness on focus matters more for a personal-use app.
+- **Next:** **Push `fd64f34`** (batches 1–3 are already up). Then the
+  real-device pass to confirm what web structurally cannot: the tab-bar
+  icon tint (web never renders `NativeTabs`) and the wheel's scroll-snap
+  *feel* (momentum, snap timing). Worth re-checking the focus-refetch fix
+  on-device too, since native uses `NativeTabs` rather than web's
+  `TabSlot` — the mount behaviour was confirmed identical in source, but
+  only the web path has been exercised live. After that: offline support
+  (writes currently fail outright with no connectivity, no local
+  queue/sync-on-reconnect). Then: auth + RLS + a second EAS build before
+  sharing the APK with friends. Track's live PR gold-flash remains
+  parked/deferred as before, not scoped yet.
 - **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
   `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
   shared `src/utils/local-date.ts`. Not urgent — each is currently used

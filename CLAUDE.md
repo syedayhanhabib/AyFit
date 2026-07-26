@@ -3,10 +3,11 @@
 ## Current state
 _Last updated: 2026-07-27_
 
-- **Last commit:** fd64f34 (refetch Summary + exercise-list data on focus, not just on mount)
-- **Pushed:** Phase 1.5 batches 1–3 are pushed (through 9c4dab5). The
-  focus-refetch fix on top of that is **not** pushed yet — 1 commit ahead
-  of origin/master.
+- **Last shipped:** focus-refetch fix — Summary + exercise-list data now
+  refetch on focus, not just on mount.
+- **Pushed:** Everything committed so far is pushed — Phase 1.5 batches
+  1–3 plus the focus-refetch fix. Verify with `git status` rather than
+  trusting this line.
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
   reopening an exercise mid-session now reads back today's already-logged
@@ -202,13 +203,13 @@ _Last updated: 2026-07-27_
   refetching, so tabbing in doesn't flash a spinner over data already on
   screen. Accepted tradeoff: each focus of Summary issues 5 queries; no
   cache layer, correctness on focus matters more for a personal-use app.
-- **Next:** **Push `fd64f34`** (batches 1–3 are already up). Then the
-  real-device pass to confirm what web structurally cannot: the tab-bar
-  icon tint (web never renders `NativeTabs`) and the wheel's scroll-snap
-  *feel* (momentum, snap timing). Worth re-checking the focus-refetch fix
-  on-device too, since native uses `NativeTabs` rather than web's
-  `TabSlot` — the mount behaviour was confirmed identical in source, but
-  only the web path has been exercised live. After that: offline support
+- **Next:** The **on-device pass**, to confirm what web structurally
+  cannot: the tab-bar icon tint (web never renders `NativeTabs`) and the
+  wheel's scroll-snap *feel* (momentum, snap timing). Also confirm the
+  focus-refetch fix there, since native uses `NativeTabs` rather than
+  web's `TabSlot` — the mount behaviour was confirmed identical in
+  source, but only the web path has been exercised live. After that:
+  offline support
   (writes currently fail outright with no connectivity, no local
   queue/sync-on-reconnect). Then: auth + RLS + a second EAS build before
   sharing the APK with friends. Track's live PR gold-flash remains
@@ -387,4 +388,12 @@ OUT (roadmap):
   not just at the end of one. Deleting a function while leaving a prop
   that referenced it type-checked fine at the previous checkpoint and blew
   up only as a runtime white-screen; tsc would have caught it instantly.
+- CLAUDE.md's Current state is authoritative for decisions and design
+  intent, but NOT for git state. Push status, branch position and what's
+  committed must be verified against git itself — this section is prose and
+  goes stale between sessions. A SHA as a *historical pointer* is durable
+  and should stay (fd64f34 = "the commit that fixed the focus-refetch bug"
+  is true forever); a SHA as a *state assertion* — branch tips, "pushed
+  through X", ahead/behind counts — is what goes stale. (Caught when a
+  stale "1 commit ahead" line was repeated as fact in a planning session.)
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

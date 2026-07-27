@@ -6,9 +6,8 @@ _Last updated: 2026-07-28_
 - **Last shipped:** muscle-picker nav level — a nav_category with more than
   one muscle shows a picker, one with exactly one skips straight to the
   exercise list.
-- **Pushed:** Everything committed so far is pushed — Phase 1.5 batches
-  1–3 plus the focus-refetch fix. Verify with `git status` rather than
-  trusting this line.
+- **Pushed:** Everything committed so far is pushed. Verify with `git status`
+  rather than trusting this line.
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
   → per-set logging → writes persist to Supabase (sessions + sets) →
   reopening an exercise mid-session now reads back today's already-logged

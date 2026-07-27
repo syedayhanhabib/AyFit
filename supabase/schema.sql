@@ -66,6 +66,13 @@ create index if not exists workout_set_exercise_id_idx on workout_set(exercise_i
 -- Seed data — re-runnable without duplicating rows.
 -- =============================================================================
 
+-- Kept in sync with supabase/seeds/001_muscles.sql — that file is the one you
+-- paste into the SQL editor to apply muscle changes to a live database; this
+-- copy exists so schema.sql alone still reproduces the whole database.
+--
+-- Names are lowercase because the first 9 rows were seeded that way and
+-- `exercise.muscle_id` references them, so renaming is off the table.
+-- Display capitalisation is the UI's job (src/utils/format-muscle-name.ts).
 insert into muscle (name, nav_category) values
   ('chest',      'Chest'),
   ('back',       'Back'),
@@ -73,6 +80,8 @@ insert into muscle (name, nav_category) values
   ('triceps',    'Arms'),
   ('quads',      'Legs'),
   ('hamstrings', 'Legs'),
+  ('glutes',     'Legs'),
+  ('calves',     'Legs'),
   ('front delt', 'Shoulders'),
   ('side delt',  'Shoulders'),
   ('rear delt',  'Shoulders')

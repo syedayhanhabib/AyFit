@@ -1,10 +1,11 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-27_
+_Last updated: 2026-07-28_
 
-- **Last shipped:** focus-refetch fix — Summary + exercise-list data now
-  refetch on focus, not just on mount.
+- **Last shipped:** muscle-picker nav level — a nav_category with more than
+  one muscle shows a picker, one with exactly one skips straight to the
+  exercise list.
 - **Pushed:** Everything committed so far is pushed — Phase 1.5 batches
   1–3 plus the focus-refetch fix. Verify with `git status` rather than
   trusting this line.
@@ -193,7 +194,8 @@ _Last updated: 2026-07-27_
   right. Two notes: (a) **Calendar had no bug** — `(tabs)/calendar.tsx` is
   still a placeholder that fetches nothing and there is no
   `calendar-repo.ts`, so there was nothing to refetch; (b) the **exercise
-  list** (`category/[category].tsx`) *did* have it, reached by
+  list** (`category/[category].tsx`, now
+  `category/[category]/[muscle].tsx`) *did* have it, reached by
   back-navigation instead of a tab switch (it stays mounted under the pushed
   logging screen, so its "last logged" subtitles showed pre-workout values)
   — fixed in the same commit. Progression also needed its default-selection
@@ -203,12 +205,39 @@ _Last updated: 2026-07-27_
   refetching, so tabbing in doesn't flash a spinner over data already on
   screen. Accepted tradeoff: each focus of Summary issues 5 queries; no
   cache layer, correctness on focus matters more for a personal-use app.
-- **Next:** The **on-device pass**, to confirm what web structurally
-  cannot: the tab-bar icon tint (web never renders `NativeTabs`) and the
-  wheel's scroll-snap *feel* (momentum, snap timing). Also confirm the
-  focus-refetch fix there, since native uses `NativeTabs` rather than
-  web's `TabSlot` — the mount behaviour was confirmed identical in
-  source, but only the web path has been exercised live. After that:
+  **A muscle-picker level now sits between the category tiles and the
+  exercise list, and the rule deciding whether it appears is data-driven.**
+  A nav_category with more than one muscle shows the picker; one with
+  exactly one skips straight to that muscle's exercise list via a
+  replace-style `Redirect` (expo-router's `Redirect` calls `router.replace`,
+  verified in its source — so the picker leaves the stack and back can't
+  bounce forward into it again; a push there would do exactly that).
+  Nothing is hardcoded per category: Chest and Back auto-skip today and
+  start branching the day either gets a second muscle row. Routes are
+  `category/[category]/index.tsx` (picker) and
+  `category/[category]/[muscle].tsx` (exercise list, moved from
+  `category/[category].tsx`), and the list filters by muscle now rather
+  than nav_category — `fetchExercisesForMuscle`, `!inner` on the join.
+  Glutes and calves are seeded, so Legs is 4 muscles and the table is 11
+  rows; `supabase/seeds/001_muscles.sql` is the file that was actually run
+  against the DB (DML-only, idempotent) and `schema.sql` mirrors it. New:
+  `lib/muscle-repo.ts`, `types/muscle.ts`, `utils/format-muscle-name.ts`,
+  `utils/pluralize.ts`. Muscle names are stored lowercase and capitalised
+  at display time. The picker is on `useEffect`, **not** `useFocusEffect` —
+  deliberate: it shows nothing per-session (no "last trained" subtitles) so
+  nothing can go stale while the app is open, and staying off the focus
+  path stops the single-muscle redirect re-evaluating on every focus.
+  Verified on a Pixel 7: Shoulders → Front delt → back → back clean (the
+  multi-word route param, which encodes as `%20`, works on native), Chest
+  auto-skip with no visible flash and no forward bounce, Legs picker at 4
+  with Calves/Glutes on the empty state.
+- **Next:** The **on-device pass still owes three things.** The muscle-picker
+  work above was verified on a Pixel 7, but these weren't, and web can't
+  settle them: the tab-bar icon tint (web never renders `NativeTabs`), the
+  wheel's scroll-snap *feel* (momentum, snap timing), and the focus-refetch
+  fix on native `NativeTabs` rather than web's `TabSlot` — that mount
+  behaviour was confirmed identical in source, but only the web path has
+  been exercised live. After that:
   offline support
   (writes currently fail outright with no connectivity, no local
   queue/sync-on-reconnect). Then: auth + RLS + a second EAS build before
@@ -396,4 +425,20 @@ OUT (roadmap):
   is true forever); a SHA as a *state assertion* — branch tips, "pushed
   through X", ahead/behind counts — is what goes stale. (Caught when a
   stale "1 commit ahead" line was repeated as fact in a planning session.)
+- Typed routes (`experiments.typedRoutes`) are generated into
+  `.expo/types/router.d.ts`, and that file is only rewritten when the **dev
+  server serves a request** — not by `npx tsc --noEmit`, and not by adding a
+  route file. So adding a route makes tsc fail with a misleading
+  `TS2820: Type '"/my/new/[route]"' is not assignable... Did you mean ...?`
+  pointing at the *new* path as if it were the typo. It isn't a code error:
+  start the dev server (or just curl `http://localhost:8081/`) once, then
+  re-run tsc. Don't "fix" the href to match the stale union.
+- `muscle.name` is load-bearing in three places at once: a display label
+  (sentence-cased by `src/utils/format-muscle-name.ts`), a URL route param
+  (`/category/[category]/[muscle]`), and a database lookup key
+  (`fetchExercisesForMuscle` filters on `muscle.name`, not on an id).
+  Consequences: renaming a muscle is a **breaking change**, not a cosmetic
+  one; and the name must be globally unique, not merely unique within its
+  nav_category — the route carries no id to disambiguate two muscles that
+  share a name. Values are stored lowercase; capitalisation is display-only.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

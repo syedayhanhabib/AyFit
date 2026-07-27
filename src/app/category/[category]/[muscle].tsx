@@ -4,7 +4,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { fetchExercisesForCategory } from '@/lib/exercises-repo';
+import { fetchExercisesForMuscle } from '@/lib/exercises-repo';
 import { getLastLoggedSet } from '@/lib/workout-set-repo';
 import type { LastLoggedSet } from '@/lib/workout-set-repo';
 import { BackButton } from '@/components/track/back-button';
@@ -12,17 +12,21 @@ import { CategoryDot } from '@/components/track/category-dot';
 import { CategoryAccent, TrackColors, TrackFonts } from '@/constants/track-theme';
 import type { Exercise } from '@/types/exercise';
 import { fmt } from '@/utils/format-number';
+import { formatMuscleName } from '@/utils/format-muscle-name';
 import { formatRelativeDate } from '@/utils/format-relative-date';
+import { pluralize } from '@/utils/pluralize';
 
-export default function CategoryScreen() {
-  const { category } = useLocalSearchParams<{ category: string }>();
+// Both params come from the path (/category/Legs/quads), so this screen needs
+// nothing passed in: `muscle` scopes the query, `category` picks the accent.
+export default function MuscleExercisesScreen() {
+  const { category, muscle } = useLocalSearchParams<{ category: string; muscle: string }>();
   const accent = CategoryAccent[category as keyof typeof CategoryAccent] ?? TrackColors.brand;
   const [exercises, setExercises] = useState<Exercise[] | null>(null);
   const [lastLoggedByExercise, setLastLoggedByExercise] = useState<Record<string, LastLoggedSet | undefined>>({});
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    fetchExercisesForCategory(category)
+    fetchExercisesForMuscle(muscle)
       .then(async result => {
         // Browsing screen, not the logging screen — no excludeSessionId, "last
         // logged" here means literally the last time, even if that was today.
@@ -32,7 +36,7 @@ export default function CategoryScreen() {
         setExercises(result);
       })
       .catch(() => setError('Could not load exercises. Check your connection and try again.'));
-  }, [category]);
+  }, [muscle]);
 
   // Focus, not mount: this screen stays mounted underneath the logging screen
   // that gets pushed on top of it, so after logging a set and hitting back, the
@@ -57,10 +61,12 @@ export default function CategoryScreen() {
             <View style={styles.headerText}>
               <View style={styles.titleRow}>
                 <CategoryDot color={accent} />
-                <Text style={styles.title}>{category}</Text>
+                <Text style={styles.title}>{formatMuscleName(muscle)}</Text>
               </View>
               <Text style={styles.eyebrow}>
-                {exercises === null ? '—' : `${exercises.length} exercises`}
+                {exercises === null
+                  ? '—'
+                  : `${exercises.length} ${pluralize(exercises.length, 'exercise')}`}
               </Text>
             </View>
           </View>
@@ -81,7 +87,7 @@ export default function CategoryScreen() {
             </View>
           ) : exercises.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No exercises found for this category.</Text>
+              <Text style={styles.emptyText}>No exercises for this muscle yet.</Text>
             </View>
           ) : (
             <ScrollView contentContainerStyle={styles.list}>

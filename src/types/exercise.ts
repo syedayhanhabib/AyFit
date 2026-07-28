@@ -2,4 +2,6 @@
 export type Exercise = {
   id: string;
   name: string;
+  movementGroup: string | null;
+  isFavourited: boolean;
 };

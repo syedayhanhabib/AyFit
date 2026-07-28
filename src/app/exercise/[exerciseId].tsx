@@ -77,7 +77,9 @@ export default function ExerciseScreen() {
   }>();
   const [fetchedExercise, setFetchedExercise] = useState<Exercise | null>(null);
   const [isLoading, setIsLoading] = useState(!name);
-  const exercise: Exercise | undefined = name ? { id: exerciseId, name } : (fetchedExercise ?? undefined);
+  const exercise: Exercise | undefined = name
+    ? { id: exerciseId, name, movementGroup: null, isFavourited: false }
+    : (fetchedExercise ?? undefined);
   const accent = CategoryAccent[category as keyof typeof CategoryAccent] ?? TrackColors.brand;
 
   // Deep-link fallback: the category list screen normally passes `name` so no fetch is needed.

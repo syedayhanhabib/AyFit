@@ -269,6 +269,38 @@ Consequences worth keeping in mind:
 Batch 2 was skipped in favour of this; further real-device pain points
 beyond it are not yet scoped.
 
+### Track — exercise list (designed, NOT yet implemented — commit 4)
+
+Spec only. The data layer landed in commit 2 (`exercise_favourite`,
+`exercise.movement_group` — see `CLAUDE.md`); none of the UI below exists
+yet.
+
+- **Two sections: Favourites (star toggle), then A–Z.** No recents section.
+  Favourites are explicit, not inferred — the reasoning is recorded against
+  the struck-out surfacing bullet in `CLAUDE.md`'s data model.
+- **Back additionally gets `movement_group` section labels**, in the display
+  order **vertical pull → horizontal pull → traps → lower back**. That order
+  is a client-side constant: not alphabetical, and not stored in the
+  database. Every other muscle's rows are NULL and render unlabelled.
+
+**Governing principle: drill down where the split is unambiguous. Label
+where it is fuzzy.**
+
+Arms, Legs and Shoulders drill down to a muscle picker because nobody
+confuses a bicep with a tricep — the tile you want is obvious. Back stays
+whole with labels instead, because upper-vs-lower back is a coin flip for a
+non-expert. The asymmetry is about the cost of guessing wrong: a wrong tile
+guess is a dead-end empty screen you have to back out of, whereas a wrong
+guess against a label costs a scroll — it degrades gracefully, because
+everything is still on the one screen.
+
+**Why chest needs no labels:** the angle-first naming grammar
+(`[Angle] [Equipment] [Movement]`) already does the grouping, since every
+incline variant clusters under I, every flat variant under F. Back is the
+one muscle alphabetisation cannot reach — "Lat pulldown", "Pull-up" and
+"Chin-up" are the same movement pattern filed under three unrelated
+letters. Labels are the fallback for exactly that case, not a default.
+
 ### Summary — Phase 2 (new build)
 
 Priority order top-to-bottom (unchanged from `CLAUDE.md`):

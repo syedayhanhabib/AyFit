@@ -3,9 +3,9 @@
 ## Current state
 _Last updated: 2026-07-28_
 
-- **Last shipped:** muscle-picker nav level — a nav_category with more than
-  one muscle shows a picker, one with exactly one skips straight to the
-  exercise list.
+- **Last shipped:** commit 2 — the real exercise catalogue and the schema
+  changes behind it (`exercise_favourite`, `exercise.movement_group`,
+  `muscle.display_order`), plus schema.sql becoming structure-only.
 - **Pushed:** Everything committed so far is pushed. Verify with `git status`
   rather than trusting this line.
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
@@ -230,7 +230,46 @@ _Last updated: 2026-07-28_
   multi-word route param, which encodes as `%20`, works on native), Chest
   auto-skip with no visible flash and no forward bounce, Legs picker at 4
   with Calves/Glutes on the empty state.
-- **Next:** The **on-device pass still owes three things.** The muscle-picker
+  **Commit 2 is done and pushed** — three commits: `451a360` (schema DDL),
+  `8f2afe6` (exercise catalogue + reset script), `f9a1c6e` (muscle display
+  order). What changed:
+  **`schema.sql` is now structure-only.** It used to carry its own copy of
+  the muscle and exercise INSERTs alongside `supabase/seeds/`, which could
+  drift; that duplication is resolved in favour of the seed files, which own
+  all row data now. See Build conventions for the run order.
+  **A 189-exercise catalogue replaces the ~20 placeholder rows**
+  (`seeds/002_exercises.sql`). Naming grammar is **[Angle] [Equipment]
+  [Movement]**, with the angle always explicit and never implied — so
+  "Flat barbell bench press" files under F, not B. That's deliberate:
+  alphabetical sort then clusters variants the way you actually choose one
+  (angle first, then implement), and no per-muscle grouping metadata is
+  needed to get it.
+  **`exercise.name` stays GLOBALLY unique, deliberately not
+  unique-per-muscle.** One movement gets exactly one row and exactly one
+  home muscle, so its e1RM line and PR history can never fragment across
+  duplicate rows. Consequence: if a lift feels like it belongs to two
+  muscles, pick one — close-grip bench is filed under triceps, and the
+  conventional/sumo deadlifts under back > lower back while the RDL family
+  sits under hamstrings.
+  **Back carries `movement_group` in four sections** — vertical pull,
+  horizontal pull, traps, lower back — rather than drilling down into
+  sub-muscles. Mixing two movement patterns with two regions is
+  intentional; vertical/horizontal alone leaves shrugs and deadlifts in an
+  unlabelled void. See DESIGN.md for the governing principle ("drill down
+  where the split is unambiguous, label where it is fuzzy").
+  **The original ~20 Title Case exercise rows and all test history were
+  deleted outright** via `supabase/scripts/001_reset_test_data.sql` —
+  one-time, run on 2026-07-28, and not part of the seed run order. They
+  predated the naming grammar and everything logged against them was
+  throwaway test data, so deleting beat renaming in place. Muscle rows were
+  not touched. All four SQL files were applied to the live dev DB that same
+  day and verified: 189 exercise rows total, back 40, split 12/15/5/8.
+- **Next:** **Commit 3** — a batched last-logged query, replacing the
+  current N+1 (the exercise list fetches "last logged" per row, which was
+  survivable at ~4 rows per muscle and is not at 25). Then **commit 4** —
+  the exercise list itself: Favourites/A–Z sections, the star toggle, and
+  `movement_group` labels on back. DESIGN.md has the spec.
+  Also still open: The **on-device pass still owes three things.** The muscle-picker
   work above was verified on a Pixel 7, but these weren't, and web can't
   settle them: the tab-bar icon tint (web never renders `NativeTabs`), the
   wheel's scroll-snap *feel* (momentum, snap timing), and the focus-refetch
@@ -275,6 +314,11 @@ calculation over that same data. One source of truth.
 - `id`
 - `name` — e.g. chest, back, biceps, triceps, quads, hamstrings, front delt, side delt, rear delt
 - `nav_category` — one of: Chest, Back, Arms, Legs, Shoulders (used for front-page tiles)
+- `display_order` — integer, anatomical ordering **within** a nav_category, so the
+  numbers repeat across categories (every category starts at 1). Legs reads
+  quads → hamstrings → glutes → calves rather than alphabetically. Defaults to 0,
+  and the app orders by `display_order` then `name`, so an unseeded database still
+  falls back to the old alphabetical behaviour instead of an arbitrary one.
 
 Note: `nav_category` groups muscles for browsing (Arms = biceps + triceps). We deliberately
 dropped a fixed push/pull/legs tag — training is freestyle, so a "day type" is at most an
@@ -282,10 +326,41 @@ optional label the user adds later, never something the app enforces.
 
 ### exercise
 - `id`
-- `name` — e.g. Bench press, Incline DB press, Lat pulldown
+- `name` — e.g. Flat barbell bench press, Incline dumbbell press, Wide-grip lat pulldown.
+  **GLOBALLY unique**, deliberately not unique-per-muscle (see Current state, commit 2).
 - `muscle_id` — primary muscle worked
-- surfacing: when the user picks a muscle, show **most-recent / most-used exercises first**
-  (this is the feature that makes logging "bench again" two taps instead of scrolling)
+- `movement_group` — nullable text, populated for **back only**; NULL for every other
+  muscle. Four permitted values, enforced by a named CHECK constraint
+  (`exercise_movement_group_check`): `vertical pull`, `horizontal pull`, `traps`,
+  `lower back`. Drives section labels on the exercise list. The *display* order of
+  those four is a client-side constant — not alphabetical, and not stored here.
+- ~~surfacing: when the user picks a muscle, show **most-recent / most-used exercises
+  first** (this is the feature that makes logging "bench again" two taps instead of
+  scrolling)~~ Superseded by **explicit favourites**, stored in `exercise_favourite`
+  below. Implicit recency has a failure mode: a cable variation tried once floats to
+  the top and displaces a staple. Frequency ranking avoids that but is both slower to
+  react and impossible to reason about at a glance. Explicit favourites are
+  predictable, under the user's control, and less code. **Two sections only —
+  Favourites, then A–Z. No third "recents" section.**
+
+### exercise_favourite
+Explicit stars, replacing the implicit recency/frequency surfacing struck out above.
+- `id`
+- `user_id` — nullable, and **no FK**: auth doesn't exist yet, so there's no users
+  table to point at. NULL for the single-user case. The column exists from day one,
+  so it's correct after auth lands without a migration. Note this is the **first
+  table to actually ship that column** — `session` only carries a comment
+  *reserving* the idea ("user_id will be added here when auth/multi-user lands"),
+  not the column itself, so `session` will still need a migration.
+- `exercise_id` — `on delete cascade`. Correct *here* specifically because a favourite
+  carries no history, so losing it with the exercise loses nothing. That is the
+  opposite of `workout_set.exercise_id`, which stays deliberately restrictive so
+  logged history can never be silently orphaned.
+- `created_at`
+
+Uniqueness needs **two** guards, not one: a `unique (user_id, exercise_id)` plus a
+partial unique index on `(exercise_id) where user_id is null`. See Build conventions
+for why the first alone constrains nothing while `user_id` is nullable.
 
 ### session
 - `id`
@@ -293,6 +368,9 @@ optional label the user adds later, never something the app enforces.
 - (later) optional label, notes
 
 ### set
+(The real table is **`workout_set`** — renamed because `set` is a reserved word in
+SQL. This heading is the conceptual entity name; every reference in code, queries
+and `schema.sql` is `workout_set`.)
 - `id`
 - `session_id`
 - `exercise_id`
@@ -440,4 +518,26 @@ OUT (roadmap):
   one; and the name must be globally unique, not merely unique within its
   nav_category — the route carries no id to disambiguate two muscles that
   share a name. Values are stored lowercase; capitalisation is display-only.
+- Seed files under `supabase/seeds/` are **canonical for row data**;
+  `schema.sql` carries **structure only**. Run order for a fresh database:
+  `schema.sql` → `seeds/001_muscles.sql` → `seeds/002_exercises.sql`.
+  `supabase/scripts/` holds one-time DESTRUCTIVE scripts and is deliberately
+  **not** part of that run order.
+- A `DO`-block guard around `ADD CONSTRAINT` must filter `pg_constraint` on
+  **`conrelid` as well as `conname`**. `conname` is only unique per table, so a
+  conname-only guard can false-positive against a same-named constraint on a
+  different table and silently skip the add — leaving the table unconstrained
+  with no error to notice.
+- **Treat any claim Claude Code makes about live database state as unverified.**
+  It has no read access to the Supabase database and cannot tell whether a
+  versioned SQL file has been applied. This matters most for
+  `supabase/scripts/`, which is destructive and not idempotent — never re-run
+  anything from there on the strength of such a claim. (Caught twice: it
+  asserted already-applied DDL "still needs running".)
+- Postgres treats NULLs as **distinct** in a unique index. So a
+  `unique (user_id, exercise_id)` with a nullable `user_id` does not constrain
+  the single-user case at all — `(null, X)` can be inserted repeatedly. It
+  needs a partial unique index on `(exercise_id) where user_id is null`
+  alongside it. (`NULLS NOT DISTINCT` would also work but ties the schema to
+  Postgres 15+.)
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

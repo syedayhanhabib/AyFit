@@ -1,8 +1,22 @@
 -- =============================================================================
 -- AyFit — Supabase schema
 --
--- Source of truth for the database schema. Run manually via the Supabase
--- SQL Editor (not applied by any build/deploy step).
+-- STRUCTURE ONLY. No INSERTs live in this file. Row data is owned by the seed
+-- files, which are canonical for it:
+--
+--   Run order for a fresh database:
+--     schema.sql -> seeds/001_muscles.sql -> seeds/002_exercises.sql
+--
+-- schema.sql used to carry its own copy of the muscle and exercise rows. That
+-- duplicated seeds/ and could drift, so it was resolved in favour of the seed
+-- files: change rows there, not here.
+--
+-- supabase/scripts/ holds one-time DESTRUCTIVE scripts and is deliberately NOT
+-- part of the run order above. Never run anything from scripts/ as part of a
+-- normal setup.
+--
+-- Run manually via the Supabase SQL Editor (not applied by any build/deploy
+-- step). Re-runnable end to end: every statement is guarded.
 --
 -- RLS is deliberately OFF for v1: single user, no auth. Revisit this file
 -- when multi-user / auth lands (see the user_id note on `session` below).
@@ -10,6 +24,11 @@
 
 -- -----------------------------------------------------------------------------
 -- muscle
+--
+-- `name` is stored lowercase and capitalised at display time
+-- (src/utils/format-muscle-name.ts). It is also a URL route param and the
+-- lookup key `fetchExercisesForMuscle` filters on, so renaming a row is a
+-- breaking change, not a cosmetic one.
 -- -----------------------------------------------------------------------------
 create table if not exists muscle (
   id           uuid primary key default gen_random_uuid(),
@@ -17,8 +36,19 @@ create table if not exists muscle (
   nav_category text not null check (nav_category in ('Chest', 'Back', 'Arms', 'Legs', 'Shoulders'))
 );
 
+-- Anatomical ordering within a nav_category. Values are set by
+-- seeds/001_muscles.sql, not here; 0 is a neutral default that falls back to
+-- alphabetical-by-name in the app.
+alter table muscle
+  add column if not exists display_order integer not null default 0;
+
 -- -----------------------------------------------------------------------------
 -- exercise
+--
+-- `name` is GLOBALLY unique, not unique-per-muscle. Every movement therefore
+-- has exactly one home muscle and one row, so its e1RM line and PR history can
+-- never fragment across duplicates — and seeds/002_exercises.sql relies on
+-- `on conflict (name) do nothing` for idempotency.
 -- -----------------------------------------------------------------------------
 create table if not exists exercise (
   id         uuid primary key default gen_random_uuid(),
@@ -27,6 +57,31 @@ create table if not exists exercise (
 );
 
 create index if not exists exercise_muscle_id_idx on exercise(muscle_id);
+
+-- Optional section label for the exercise list. Nullable, and NULL for every
+-- muscle except back — back is the one muscle where alphabetisation can't do
+-- the grouping work ("Lat pulldown", "Pull-up" and "Chin-up" are the same
+-- pattern under three unrelated letters). See seeds/002_exercises.sql.
+alter table exercise
+  add column if not exists movement_group text;
+
+-- Named so it can be dropped/re-added deterministically. Guarded rather than
+-- `if not exists` (which ALTER ... ADD CONSTRAINT does not support) so this
+-- file stays re-runnable.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname  = 'exercise_movement_group_check'
+      and conrelid = 'exercise'::regclass
+  ) then
+    alter table exercise
+      add constraint exercise_movement_group_check
+      check (movement_group is null or movement_group in (
+        'vertical pull', 'horizontal pull', 'traps', 'lower back'
+      ));
+  end if;
+end $$;
 
 -- -----------------------------------------------------------------------------
 -- session
@@ -62,59 +117,32 @@ create table if not exists workout_set (
 create index if not exists workout_set_session_id_idx on workout_set(session_id);
 create index if not exists workout_set_exercise_id_idx on workout_set(exercise_id);
 
--- =============================================================================
--- Seed data — re-runnable without duplicating rows.
--- =============================================================================
-
--- Kept in sync with supabase/seeds/001_muscles.sql — that file is the one you
--- paste into the SQL editor to apply muscle changes to a live database; this
--- copy exists so schema.sql alone still reproduces the whole database.
+-- -----------------------------------------------------------------------------
+-- exercise_favourite
 --
--- Names are lowercase because the first 9 rows were seeded that way and
--- `exercise.muscle_id` references them, so renaming is off the table.
--- Display capitalisation is the UI's job (src/utils/format-muscle-name.ts).
-insert into muscle (name, nav_category) values
-  ('chest',      'Chest'),
-  ('back',       'Back'),
-  ('biceps',     'Arms'),
-  ('triceps',    'Arms'),
-  ('quads',      'Legs'),
-  ('hamstrings', 'Legs'),
-  ('glutes',     'Legs'),
-  ('calves',     'Legs'),
-  ('front delt', 'Shoulders'),
-  ('side delt',  'Shoulders'),
-  ('rear delt',  'Shoulders')
-on conflict (name) do nothing;
+-- Starred exercises, floated to the top of the exercise list.
+--
+-- ON DELETE CASCADE on exercise_id is correct HERE specifically because a
+-- favourite carries no history — losing it with the exercise loses nothing.
+-- That is the opposite of workout_set.exercise_id, which is deliberately
+-- restrictive so logged history can never be silently orphaned.
+--
+-- user_id has no FK: auth does not exist yet, so there is no users table to
+-- point at. It stays NULL for the single-user case.
+-- -----------------------------------------------------------------------------
+create table if not exists exercise_favourite (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid null,
+  exercise_id uuid not null references exercise(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  unique (user_id, exercise_id)
+);
 
-insert into exercise (name, muscle_id)
-select v.name, m.id
-from (values
-  -- Chest
-  ('Bench Press',       'chest'),
-  ('Incline DB Press',  'chest'),
-  ('Flat DB Press',     'chest'),
-  ('Cable Fly',         'chest'),
-  -- Back
-  ('Lat Pulldown',      'back'),
-  ('Barbell Row',       'back'),
-  ('Seated Cable Row',  'back'),
-  ('Pull-Up',           'back'),
-  -- Arms
-  ('Barbell Curl',      'biceps'),
-  ('Hammer Curl',       'biceps'),
-  ('Tricep Pushdown',   'triceps'),
-  ('Skull Crusher',     'triceps'),
-  -- Legs
-  ('Back Squat',        'quads'),
-  ('Leg Press',         'quads'),
-  ('Romanian Deadlift', 'hamstrings'),
-  ('Leg Curl',          'hamstrings'),
-  -- Shoulders
-  ('Overhead Press',    'front delt'),
-  ('Lateral Raise',     'side delt'),
-  ('Rear Delt Fly',     'rear delt'),
-  ('Front Raise',       'front delt')
-) as v(name, muscle_name)
-join muscle m on m.name = v.muscle_name
-on conflict (name) do nothing;
+-- The unique constraint above does NOT cover the current single-user case:
+-- Postgres treats NULLs as distinct in a unique index, so (null, X) can be
+-- inserted repeatedly and the same exercise starred twice. This partial index
+-- closes that hole. Deliberately not NULLS NOT DISTINCT, which would tie the
+-- schema to Postgres 15+.
+create unique index if not exists exercise_favourite_exercise_id_anon_idx
+  on exercise_favourite (exercise_id)
+  where user_id is null;

@@ -264,11 +264,41 @@ _Last updated: 2026-07-28_
   throwaway test data, so deleting beat renaming in place. Muscle rows were
   not touched. All four SQL files were applied to the live dev DB that same
   day and verified: 189 exercise rows total, back 40, split 12/15/5/8.
-- **Next:** **Commit 3** — a batched last-logged query, replacing the
-  current N+1 (the exercise list fetches "last logged" per row, which was
-  survivable at ~4 rows per muscle and is not at 25). Then **commit 4** —
-  the exercise list itself: Favourites/A–Z sections, the star toggle, and
-  `movement_group` labels on back. DESIGN.md has the spec.
+  **Commit 3 is done — the exercise list's N+1 is gone.** It used to call
+  `getLastLoggedSet` once per row (fine at ~4 rows, not at 25); that loop is
+  replaced by `getLastLoggedSetsForMuscle` (`workout-set-repo.ts`) — one
+  batched PostgREST query using an **embedded-resource limit**
+  (`.limit(1, { referencedTable: 'workout_set' })`), so a single round trip
+  returns the latest set per exercise. Not fetch-everything-and-reduce, and
+  not an RPC. Two deliberate details:
+  (a) `workout_set` is embedded **without `!inner`** — the one intentional
+  exception to the `!inner` convention below. A never-logged exercise must
+  still come back, with an empty embed, or it vanishes from the list
+  entirely. The `is_warmup` filter is a separate embedded filter param, which
+  PostgREST puts inside the lateral subquery's WHERE, so it applies *before*
+  the limit and a trailing warm-up can't surface as the last logged set.
+  (b) `getLastLoggedSet` is **retained, not deleted** — the logging screen
+  needs its `excludeSessionId` so "LAST TIME" doesn't echo the set you added
+  ten seconds ago, and the browsing screen deliberately omits it ("last
+  logged" there means literally the last time, even if that was today). Both
+  carry a comment saying why the other exists.
+  Call site (`category/[category]/[muscle].tsx`) stays on the same
+  `useFocusEffect` path as before (per `fd64f34`) and now runs the two
+  queries under one `Promise.all`. `referencedTable` is the correct option
+  name for the installed `@supabase/postgrest-js` 2.110.0 — `foreignTable`
+  is deprecated in its own type defs. Verified: `tsc` clean, and the
+  generated request URL inspected offline. **Not yet run against real data** —
+  two things to check on the next device pass. First, that never-logged
+  exercises still render as rows (that's what the missing `!inner` buys; if
+  it's wrong the list goes nearly empty, which is loud and obvious). Second,
+  that a trailing warm-up doesn't displace a working set in a row's subtitle
+  — this is the **silent** one of the two, because a warm-up weight renders as
+  a perfectly plausible number rather than an obvious break, so it has to be
+  deliberately looked for instead of waiting to be noticed. Reproducing it
+  needs a working set followed by a warm-up on the same exercise.
+- **Next:** **Commit 4** — the exercise list itself: Favourites/A–Z
+  sections, the star toggle, and `movement_group` labels on back.
+  DESIGN.md's "Track — exercise list" section has the spec.
   Also still open: The **on-device pass still owes three things.** The muscle-picker
   work above was verified on a Pixel 7, but these weren't, and web can't
   settle them: the tab-bar icon tint (web never renders `NativeTabs`), the
@@ -288,6 +318,16 @@ _Last updated: 2026-07-28_
   case, which was the same logic silently diverging across three
   copies) — but it's the same shape of problem starting over. Revisit
   once Summary's data layer is fully done (after PR detection).
+  Also parked: **give the logging screen a distinct error state.**
+  `src/app/exercise/[exerciseId].tsx:92` stores `null` on fetch failure,
+  which renders "Exercise not found" — so a network error is
+  indistinguishable from a genuinely missing row, and the screen tells
+  the user something false. Today that needs a dropped connection to
+  hit, so it's rare; once offline support lands it becomes routine,
+  which is when a wrong message stops being a curiosity and starts being
+  the normal experience. Fix is a third state, not a different sentinel
+  value (see the undefined-vs-null convention in Build conventions,
+  where this is recorded as a symptom).
 
 Rule going forward: update the "_Last updated_" line and these bullets at the
 end of each session. This section is the source of truth for "where am I."
@@ -540,4 +580,55 @@ OUT (roadmap):
   needs a partial unique index on `(exercise_id) where user_id is null`
   alongside it. (`NULLS NOT DISTINCT` would also work but ties the schema to
   Postgres 15+.)
+- **`undefined` vs `null` — keep them distinct even when both render identically.**
+  `undefined` means *no such value exists*. A function with no result returns
+  `undefined`, never `0` or `''`, so every consumer is forced to decide what
+  absence renders as instead of silently showing a zero that reads like a real
+  measurement. `bestE1rm()` (`src/utils/e1rm.ts`) is the precedent: an exercise
+  with only warm-up sets returns `undefined`, and the logging screen renders
+  `'—'` for it rather than `0kg`. Same shape in `getLastLoggedSet()` and in the
+  `parseValid*()` input parsers, where `0` would additionally be *falsy* and
+  collapse "empty field" into "zero entered".
+  `null` is messier, and this is a known collision rather than a clean rule.
+  It carries **two distinct meanings kept apart by POSITION, not by value**:
+  in component state it means *not yet fetched* (every screen and Summary card
+  does this — `useState<T | null>(null)`, branched on as `exercises === null` to
+  show a spinner), and as a
+  repo return it means *confirmed absent* — that's what `maybeSingle()` gives
+  (`fetchExerciseById`, `getTodaySession`). Note this is the opposite way round
+  from "undefined = not fetched, null = empty"; don't use `undefined` as a
+  loading sentinel.
+  Position stops being enough the moment a repo's `null` return is stored in a
+  `null`-initialised state, and **that is already live** in
+  `src/app/exercise/[exerciseId].tsx:78-92`: `fetchedExercise` is
+  `useState<Exercise | null>(null)`, then `setFetchedExercise(result)` stores
+  `fetchExerciseById`'s `null` for a missing row, and the `.catch` stores `null`
+  again. Three states, one token — not-fetched, not-found, fetch-failed.
+  What rescues it is a **separate boolean**, not the value: `isLoading`
+  (line 79, cleared in `.finally()`) drives the render, so line 225 shows a
+  spinner while loading and line 229 shows "Exercise not found" after, and
+  line 80 normalises `fetchedExercise ?? undefined` so nothing downstream ever
+  sees the `null`. The residual wart is the error path — a failed fetch renders
+  "Exercise not found", indistinguishable from a genuinely missing row.
+  So: when absence and not-yet-known must be told apart, carry a separate
+  loading flag and normalise to `undefined` at the boundary. `previousSet`
+  (line 109) is the clean version of this and already says so in a comment
+  next to it.
+  (`getTodaySession`'s only consumer, line 132, is fine — it lands in a local
+  `const`, never in state, and converts to `undefined` at the call boundary.)
+  **Corollary:** a `Record` keyed by id that OMITS keys for absent entries must
+  be typed `Record<string, T | undefined>`. `noUncheckedIndexedAccess` is not
+  enabled — it is not part of `strict`, and neither `tsconfig.json` nor the
+  inherited `expo/tsconfig.base` sets it — so without the union a missing-key
+  lookup types as `T` and a dropped guard produces no type error. See
+  `getLastLoggedSetsForMuscle`.
+- **Generalising the "no read access to the database" bullet above: treat any
+  claim about the state of a system not currently in view as unverified.** The
+  live database, a file not opened this session, whether a migration ran — and
+  conventions. This cuts **both ways**: if a prompt cites a convention as
+  already being in CLAUDE.md, grep for it before relying on it. Conventions get
+  cited from memory and sometimes were never written down. This bullet exists
+  because the `undefined` rule above was cited across earlier sessions as
+  established convention and turned out to be in no file at all — the code
+  followed it, the doc had never recorded it.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

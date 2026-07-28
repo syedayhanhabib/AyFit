@@ -5,8 +5,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fetchExercisesForMuscle } from '@/lib/exercises-repo';
-import { getLastLoggedSet } from '@/lib/workout-set-repo';
-import type { LastLoggedSet } from '@/lib/workout-set-repo';
+import { getLastLoggedSetsForMuscle } from '@/lib/workout-set-repo';
+import type { LastLoggedByExerciseId } from '@/lib/workout-set-repo';
 import { BackButton } from '@/components/track/back-button';
 import { CategoryDot } from '@/components/track/category-dot';
 import { CategoryAccent, TrackColors, TrackFonts } from '@/constants/track-theme';
@@ -22,17 +22,18 @@ export default function MuscleExercisesScreen() {
   const { category, muscle } = useLocalSearchParams<{ category: string; muscle: string }>();
   const accent = CategoryAccent[category as keyof typeof CategoryAccent] ?? TrackColors.brand;
   const [exercises, setExercises] = useState<Exercise[] | null>(null);
-  const [lastLoggedByExercise, setLastLoggedByExercise] = useState<Record<string, LastLoggedSet | undefined>>({});
+  const [lastLoggedByExercise, setLastLoggedByExercise] = useState<LastLoggedByExerciseId>({});
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    fetchExercisesForMuscle(muscle)
-      .then(async result => {
-        // Browsing screen, not the logging screen — no excludeSessionId, "last
-        // logged" here means literally the last time, even if that was today.
-        const lastLogged = await Promise.all(result.map(exercise => getLastLoggedSet(exercise.id)));
+    // Two independent queries, so they go out together rather than waiting on
+    // each other. getLastLoggedSetsForMuscle is keyed by exercise id and is a
+    // single batched query — it used to be one getLastLoggedSet call per row,
+    // which is 25 round trips on a muscle like chest.
+    Promise.all([fetchExercisesForMuscle(muscle), getLastLoggedSetsForMuscle(muscle)])
+      .then(([result, lastLogged]) => {
         setError(null);
-        setLastLoggedByExercise(Object.fromEntries(result.map((exercise, i) => [exercise.id, lastLogged[i]])));
+        setLastLoggedByExercise(lastLogged);
         setExercises(result);
       })
       .catch(() => setError('Could not load exercises. Check your connection and try again.'));

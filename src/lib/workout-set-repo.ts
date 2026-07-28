@@ -62,6 +62,11 @@ type LastLoggedSetRow = { weight_kg: number; reps: number; rpe: number; session:
 // Read-only, cross-session lookup for the "previous session" card — most recent
 // working set for this exercise, ever. excludeSessionId keeps today's own sets
 // (the session currently being logged) out of "previous".
+//
+// Kept alongside getLastLoggedSetsForMuscle below, which is NOT a drop-in
+// replacement: this one is per-exercise and can exclude a session, which the
+// logging screen needs so "LAST TIME" doesn't just echo the set you added ten
+// seconds ago. The batched one has no exclusion by design.
 export async function getLastLoggedSet(
   exerciseId: string,
   excludeSessionId?: string,
@@ -85,6 +90,70 @@ export async function getLastLoggedSet(
 
   const row = data[0];
   return { weightKg: row.weight_kg, reps: row.reps, rpe: row.rpe, sessionDate: row.session.date };
+}
+
+// The `| undefined` is deliberate, don't simplify it away: keys are OMITTED for
+// exercises with no history, and noUncheckedIndexedAccess isn't on, so without
+// the union a missing-key lookup types as LastLoggedSet and the call site's
+// `lastLogged && ...` guard could be dropped with no type error.
+export type LastLoggedByExerciseId = Record<string, LastLoggedSet | undefined>;
+
+type LastLoggedBatchRow = {
+  id: string;
+  workout_set: { weight_kg: number; reps: number; rpe: number; session: { date: string } }[];
+};
+
+/**
+ * Batched sibling of getLastLoggedSet: the last working set for EVERY exercise
+ * in one muscle, in a single round trip, keyed by exercise id.
+ *
+ * Replaces an N+1 — the exercise list used to call getLastLoggedSet once per
+ * row. That was survivable at ~4 rows per muscle and isn't at 25.
+ *
+ * Semantics deliberately match getLastLoggedSet exactly: non-warmup sets only,
+ * newest by created_at, and NO session exclusion (this is the browsing screen,
+ * where "last logged" means literally the last time even if that was today).
+ *
+ * One query, not fetch-everything-and-reduce: PostgREST applies an embedded
+ * limit per parent row, so `.limit(1, { referencedTable: 'workout_set' })`
+ * yields the latest set per exercise rather than one set overall. The
+ * is_warmup filter is a separate embedded filter param, which PostgREST puts
+ * inside the lateral subquery's WHERE — so it applies BEFORE the limit, and a
+ * trailing warm-up can't come back as the last logged set.
+ * (`referencedTable` is the current option name; `foreignTable` is deprecated
+ * in the installed @supabase/postgrest-js 2.110.0 type defs.)
+ */
+export async function getLastLoggedSetsForMuscle(muscle: string): Promise<LastLoggedByExerciseId> {
+  const { data, error } = await supabase
+    .from('exercise')
+    // muscle uses !inner per the Postgrest convention in CLAUDE.md. workout_set
+    // deliberately does NOT — this is the exception to that rule: an exercise
+    // with no sets yet must still come back, with an empty embed, so it still
+    // renders as a row. Adding !inner here would silently hide every
+    // never-logged exercise from the list. Don't "fix" it.
+    .select('id, muscle!inner(name), workout_set(weight_kg, reps, rpe, session!inner(date))')
+    .eq('muscle.name', muscle)
+    .eq('workout_set.is_warmup', false)
+    .order('created_at', { referencedTable: 'workout_set', ascending: false })
+    .limit(1, { referencedTable: 'workout_set' })
+    .returns<LastLoggedBatchRow[]>();
+
+  if (error) throw error;
+
+  const result: LastLoggedByExerciseId = {};
+  for (const row of data) {
+    const set = row.workout_set[0];
+    // No history: omit the key entirely rather than storing undefined, so the
+    // call site's `lastLogged && ...` check renders no subtitle for this row.
+    if (set === undefined) continue;
+    result[row.id] = {
+      weightKg: set.weight_kg,
+      reps: set.reps,
+      rpe: set.rpe,
+      sessionDate: set.session.date,
+    };
+  }
+  return result;
 }
 
 export type ExerciseHistoryEntry = { id: string; name: string };

@@ -4,6 +4,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ActivityIndicator, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { addFavourite, removeFavourite } from '@/lib/exercise-favourite-repo';
 import { groupExercisesForList } from '@/lib/exercise-list-grouping';
 import { fetchExercisesForMuscle } from '@/lib/exercises-repo';
 import { getLastLoggedSetsForMuscle } from '@/lib/workout-set-repo';
@@ -28,6 +29,7 @@ export default function MuscleExercisesScreen() {
   const [exercises, setExercises] = useState<Exercise[] | null>(null);
   const [lastLoggedByExercise, setLastLoggedByExercise] = useState<LastLoggedByExerciseId>({});
   const [error, setError] = useState<string | null>(null);
+  const [pendingFavouriteIds, setPendingFavouriteIds] = useState<Record<string, boolean>>({});
 
   const load = useCallback(() => {
     // Two independent queries, so they go out together rather than waiting on
@@ -69,6 +71,36 @@ export default function MuscleExercisesScreen() {
     setError(null);
     setExercises(null);
     load();
+  }
+
+  function setExerciseFavourited(exerciseId: string, isFavourited: boolean) {
+    setExercises(prev =>
+      prev ? prev.map(e => (e.id === exerciseId ? { ...e, isFavourited } : e)) : prev,
+    );
+  }
+
+  async function handleToggleFavourite(exercise: Exercise) {
+    if (pendingFavouriteIds[exercise.id]) return;
+
+    const previousValue = exercise.isFavourited;
+    setPendingFavouriteIds(prev => ({ ...prev, [exercise.id]: true }));
+    setExerciseFavourited(exercise.id, !previousValue);
+
+    try {
+      if (previousValue) {
+        await removeFavourite(exercise.id);
+      } else {
+        await addFavourite(exercise.id);
+      }
+    } catch {
+      setExerciseFavourited(exercise.id, previousValue);
+    } finally {
+      setPendingFavouriteIds(prev => {
+        const next = { ...prev };
+        delete next[exercise.id];
+        return next;
+      });
+    }
   }
 
   return (
@@ -128,6 +160,7 @@ export default function MuscleExercisesScreen() {
               }
               renderItem={({ item: exercise }) => {
                 const lastLogged = lastLoggedByExercise[exercise.id];
+                const isPending = pendingFavouriteIds[exercise.id] === true;
                 return (
                   <Pressable
                     onPress={() =>
@@ -138,6 +171,21 @@ export default function MuscleExercisesScreen() {
                     }
                     style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                   >
+                    <Pressable
+                      onPress={event => {
+                        event.stopPropagation();
+                        handleToggleFavourite(exercise);
+                      }}
+                      hitSlop={14}
+                      style={styles.favouriteButton}
+                    >
+                      <MaterialCommunityIcons
+                        name={exercise.isFavourited ? 'star' : 'star-outline'}
+                        size={20}
+                        color={exercise.isFavourited ? TrackColors.brand : TrackColors.textMuted}
+                        style={isPending && styles.favouriteIconPending}
+                      />
+                    </Pressable>
                     <View style={styles.rowTextColumn}>
                       <Text style={styles.rowLabel}>{exercise.name}</Text>
                       {lastLogged && (
@@ -200,6 +248,8 @@ const styles = StyleSheet.create({
     borderTopColor: TrackColors.border,
   },
   rowPressed: { backgroundColor: TrackColors.surface },
+  favouriteButton: { alignItems: 'center', justifyContent: 'center' },
+  favouriteIconPending: { opacity: 0.4 },
   rowTextColumn: { flex: 1, minWidth: 0, gap: 2 },
   rowLabel: { fontFamily: TrackFonts.uiSemiBold, fontSize: 16, color: TrackColors.text },
   rowSubtitle: { fontFamily: TrackFonts.uiRegular, fontSize: 13, color: TrackColors.textSecondary },

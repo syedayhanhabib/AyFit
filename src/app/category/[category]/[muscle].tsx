@@ -1,9 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { groupExercisesForList } from '@/lib/exercise-list-grouping';
 import { fetchExercisesForMuscle } from '@/lib/exercises-repo';
 import { getLastLoggedSetsForMuscle } from '@/lib/workout-set-repo';
 import type { LastLoggedByExerciseId } from '@/lib/workout-set-repo';
@@ -12,9 +13,12 @@ import { CategoryDot } from '@/components/track/category-dot';
 import { CategoryAccent, TrackColors, TrackFonts } from '@/constants/track-theme';
 import type { Exercise } from '@/types/exercise';
 import { fmt } from '@/utils/format-number';
+import { formatMovementGroupName } from '@/utils/format-movement-group';
 import { formatMuscleName } from '@/utils/format-muscle-name';
 import { formatRelativeDate } from '@/utils/format-relative-date';
 import { pluralize } from '@/utils/pluralize';
+
+type ExerciseSection = { title: string; data: Exercise[] };
 
 // Both params come from the path (/category/Legs/quads), so this screen needs
 // nothing passed in: `muscle` scopes the query, `category` picks the accent.
@@ -45,6 +49,21 @@ export default function MuscleExercisesScreen() {
   // app relaunched — the same mount-only bug as Summary's cards, just reached
   // by back-navigation instead of a tab switch.
   useFocusEffect(load);
+
+  // Derived view over `exercises`, same principle as e1RM/volume being
+  // computed-live rather than stored — not its own state.
+  const listSections = useMemo<ExerciseSection[]>(() => {
+    const { favourites, sections } = groupExercisesForList(exercises ?? []);
+    const result: ExerciseSection[] = [];
+    if (favourites.length > 0) result.push({ title: 'Favourites', data: favourites });
+    for (const section of sections) {
+      result.push({
+        title: section.label === null ? '' : formatMovementGroupName(section.label),
+        data: section.exercises,
+      });
+    }
+    return result;
+  }, [exercises]);
 
   function handleRetry() {
     setError(null);
@@ -91,12 +110,26 @@ export default function MuscleExercisesScreen() {
               <Text style={styles.emptyText}>No exercises for this muscle yet.</Text>
             </View>
           ) : (
-            <ScrollView contentContainerStyle={styles.list}>
-              {exercises.map((exercise, index) => {
+            <SectionList
+              style={styles.sectionList}
+              sections={listSections}
+              keyExtractor={item => item.id}
+              contentContainerStyle={styles.list}
+              // Muscle lists top out around 40 rows + a handful of section
+              // headers (Back) — small enough to render in full upfront
+              // rather than lean on scroll-triggered windowing, which needs
+              // rAF to expand its render window (see CLAUDE.md's
+              // VirtualizedList-on-web caution).
+              initialNumToRender={100}
+              renderSectionHeader={({ section }) =>
+                section.title === '' ? null : (
+                  <Text style={styles.sectionHeader}>{section.title}</Text>
+                )
+              }
+              renderItem={({ item: exercise }) => {
                 const lastLogged = lastLoggedByExercise[exercise.id];
                 return (
                   <Pressable
-                    key={exercise.id}
                     onPress={() =>
                       router.push({
                         pathname: '/exercise/[exerciseId]',
@@ -120,8 +153,8 @@ export default function MuscleExercisesScreen() {
                     <MaterialCommunityIcons name="chevron-right" size={18} color={TrackColors.textMuted} />
                   </Pressable>
                 );
-              })}
-            </ScrollView>
+              }}
+            />
           )}
         </SafeAreaView>
       </View>
@@ -144,7 +177,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: 2,
   },
+  sectionList: { flex: 1 },
   list: { paddingBottom: 24 },
+  sectionHeader: {
+    fontFamily: TrackFonts.uiSemiBold,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    color: TrackColors.textMuted,
+    textTransform: 'uppercase',
+    backgroundColor: TrackColors.background,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

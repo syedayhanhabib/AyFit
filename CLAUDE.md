@@ -1,11 +1,36 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-28_
+_Last updated: 2026-07-31_
 
-- **Last shipped:** commit 2 — the real exercise catalogue and the schema
-  changes behind it (`exercise_favourite`, `exercise.movement_group`,
-  `muscle.display_order`), plus schema.sql becoming structure-only.
+**Track/Summary: dogfooding in progress.** Real workouts have been logged
+on-device for several days via the EAS build. Testing is ongoing (a few
+more days planned) before a conclusive list of UI/UX issues gets
+compiled — some have already surfaced in Track and, to a lesser extent,
+Summary, but nothing's finalized. Don't preemptively guess at or fix
+anything here before it's explicitly described.
+
+**Guardrail while dogfooding continues:** don't modify exercises-repo.ts,
+exercise-favourite-repo.ts, workout-set-repo.ts, summary-repo.ts,
+exercise-list-grouping.ts, any screen under src/app/category/ or
+src/app/exercise/, or Summary's card components — and don't alter the
+shape of any existing table in schema.sql. New repo files that only read
+existing tables, and new strictly-additive tables, are fine. Editing what
+already exists is not, until testing concludes.
+
+**Active build track: Calendar + Profile.** Both are still placeholder
+screens. Development continues on them concurrently with the dogfooding
+above, since neither shares files with the tested surface. Nothing about
+their shape is decided yet — to be scoped fresh.
+
+- **Last shipped:** commit 4 — exercise favourites + Back's
+  `movement_group` section labels on the exercise list, in three parts:
+  4a (`784802c`) the data layer (exercise-favourite-repo.ts,
+  fetchExercisesForMuscle's isFavourited/movementGroup embed,
+  exercise-list-grouping.ts), 4b (`d6f55ae`) SectionList rendering
+  (Favourites, movement_group, or flat), 4c (`6ef88dd`) the star toggle
+  wired to real add/removeFavourite writes. Confirmed via a real EAS
+  build installed on-device (Pixel 7), not just `tsc`.
 - **Pushed:** Everything committed so far is pushed. Verify with `git status`
   rather than trusting this line.
 - **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
@@ -296,21 +321,28 @@ _Last updated: 2026-07-28_
   a perfectly plausible number rather than an obvious break, so it has to be
   deliberately looked for instead of waiting to be noticed. Reproducing it
   needs a working set followed by a warm-up on the same exercise.
-- **Next:** **Commit 4** — the exercise list itself: Favourites/A–Z
-  sections, the star toggle, and `movement_group` labels on back.
-  DESIGN.md's "Track — exercise list" section has the spec.
-  Also still open: The **on-device pass still owes three things.** The muscle-picker
-  work above was verified on a Pixel 7, but these weren't, and web can't
-  settle them: the tab-bar icon tint (web never renders `NativeTabs`), the
-  wheel's scroll-snap *feel* (momentum, snap timing), and the focus-refetch
-  fix on native `NativeTabs` rather than web's `TabSlot` — that mount
-  behaviour was confirmed identical in source, but only the web path has
-  been exercised live. After that:
-  offline support
-  (writes currently fail outright with no connectivity, no local
-  queue/sync-on-reconnect). Then: auth + RLS + a second EAS build before
-  sharing the APK with friends. Track's live PR gold-flash remains
-  parked/deferred as before, not scoped yet.
+- **Next:** With commit 4 shipped, work splits into two concurrent
+  tracks — see the dogfooding note at the top of this section. Track
+  itself: fix whatever Track/Summary issues the ongoing dogfooding
+  surfaces (nothing finalized yet, don't guess ahead of it). Calendar +
+  Profile: build out from their current placeholder state, unblocked
+  since neither shares files with the tested surface.
+  **Phase 1.5's on-device pass is now confirmed complete** — the three
+  items it used to owe (the tab-bar icon tint, since web never renders
+  `NativeTabs`; the wheel's scroll-snap *feel*; and the focus-refetch fix
+  on native `NativeTabs` rather than web's `TabSlot`) have all been
+  exercised live across several days of real dogfooding on the Pixel 7
+  EAS build. Commit 3's two device checks (never-logged exercises still
+  rendering as rows; a trailing warm-up not displacing a working set in
+  a row's subtitle — see the Done bullet above) remain **open and
+  unconfirmed** — dogfooding hasn't specifically targeted them yet.
+  **Sequencing after dogfooding wraps:** fix whatever Track/Summary
+  issues testing surfaces, then offline support (writes currently fail
+  outright with no connectivity — needs to land before auth so every
+  write path, including whatever Calendar/Profile end up adding, only
+  grows a queue/sync story once), then auth + RLS, then one more EAS
+  build, then the APK goes to friends. Track's live PR gold-flash
+  remains parked/deferred as before, not scoped yet.
 - **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
   `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
   shared `src/utils/local-date.ts`. Not urgent — each is currently used

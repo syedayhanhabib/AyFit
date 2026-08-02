@@ -1,7 +1,7 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-07-31_
+_Last updated: 2026-08-03_
 
 **Track/Summary: dogfooding in progress.** Real workouts have been logged
 on-device for several days via the EAS build. Testing is ongoing (a few
@@ -141,7 +141,7 @@ their shape is decided yet — to be scoped fresh.
   write (a shoulder exercise set logged and read back correctly),
   independent of Expo Go/Metro/shared wifi for the first time.
   **Phase 1.5 real-device polish pass, batch 1 is done** (four commits,
-  not yet pushed): (1) tab bar — labels now always render for all four
+  pushed): (1) tab bar — labels now always render for all four
   tabs (`labelVisibilityMode="labeled"` fixes Android's 4-tab
   selected-only collapse), real MaterialCommunityIcons per tab
   replacing two duplicated placeholder assets. (2) Shared `Wordmark`
@@ -166,7 +166,7 @@ their shape is decided yet — to be scoped fresh.
   bumped 16px → 20px with a 48pt touch target (hitSlop 14), dotted
   underline added under each tipped term label, RPE/e1RM glossary copy
   replaced with expanded verified text.
-  **Phase 1.5 batch 3 is done** (three commits, also unpushed). Batch 2
+  **Phase 1.5 batch 3 is done** (three commits, also pushed). Batch 2
   was skipped in favour of it. (1) Wordmark: gradient direction flipped
   to deep→brand (`Palette.brandDeep` first) so it brightens as it reads
   instead of fading out at the tail; font swapped Space Grotesk bold →
@@ -321,12 +321,50 @@ their shape is decided yet — to be scoped fresh.
   a perfectly plausible number rather than an obvious break, so it has to be
   deliberately looked for instead of waiting to be noticed. Reproducing it
   needs a working set followed by a warm-up on the same exercise.
-- **Next:** With commit 4 shipped, work splits into two concurrent
-  tracks — see the dogfooding note at the top of this section. Track
+  **Step 5a is done — Calendar's read-only data layer** (commit `0d3b280`):
+  four new files, zero existing files touched. `src/utils/local-date.ts`
+  (canonical home for local-date math: `formatDateLocal`, `parseDateLocal`,
+  `todayLocalDate`, `getMonthRange`), `src/types/calendar.ts`,
+  `src/utils/session-blocks.ts` (pure `groupIntoSessionBlocks`, no Supabase
+  import — same math-vs-fetching split as `pr-detection.ts`),
+  `src/lib/calendar-repo.ts` (`getTrainedDaysInMonth`,
+  `getSessionDayDetail`). Verified against the dev DB via a throwaway
+  read-only smoke script (deleted after use): limited and unlimited embeds
+  returned identical date sets, so `!inner` and the embedded `limit` don't
+  conflict on real data; `workout_set`-under-`session` comes back as an
+  ARRAY while `exercise`/`session`-under-`workout_set` come back as
+  OBJECTS, both matching the declared `.returns<>()` types; warm-ups
+  present (13 sets on 2026-07-30, `is_warmup: true` among them); an empty
+  date returns zero rows, hence `null`. **Not yet verified against real
+  data:** the return-to-an-exercise-later block split — only the synthetic
+  `A A B B A` case in `session-blocks.ts` covers it, since 2026-07-30's
+  three logged exercises never repeat. Closes itself the first time a real
+  session doubles back on a lift.
+  **Open thing to look for once 5b lands (not a fix now):**
+  `getOrCreateTodaySession` (`session-repo.ts`) keys off `todayLocalDate()`
+  at write time, so a workout crossing local midnight plausibly produces
+  two session rows on two dates, and Calendar would show it split across
+  two days. `getSessionDayDetail` degrades gracefully since it collects
+  sets by date rather than by session, but the split itself would still be
+  visible on the month grid. Late-night training (see the 07-30 real-data
+  evidence above, 00:31–01:17 local) makes this non-hypothetical. Needs
+  confirming against real data, not assuming.
+  **Deferred capture-time change:** `workout_set.created_at` is currently
+  server-insert time via `default now()`, which only equals performed time
+  while always online. Once writes queue offline, a flushed batch lands
+  with near-identical timestamps and performed order scrambles. The fix is
+  to set `created_at` client-side at capture time — one line in
+  `workout-set-repo.ts` — deliberately deferred to the offline-support
+  phase, since that file is guardrailed and will already be open then.
+  Ordering stays `created_at` then `id` as a deterministic tiebreak,
+  unchanged.
+- **Next:** Step 5b — Calendar's month grid UI, wired to 5a as it's built
+  (no shell-then-wire split like Summary got: an unwired calendar grid is
+  just an empty grid, nothing to review in isolation). Then step 5c, the
+  `/day/[date]` detail route. Profile: still unbuilt from its placeholder
+  state, unblocked since it shares no files with the tested surface. Track
   itself: fix whatever Track/Summary issues the ongoing dogfooding
-  surfaces (nothing finalized yet, don't guess ahead of it). Calendar +
-  Profile: build out from their current placeholder state, unblocked
-  since neither shares files with the tested surface.
+  surfaces (nothing finalized yet, don't guess ahead of it).
   **Phase 1.5's on-device pass is now confirmed complete** — the three
   items it used to owe (the tab-bar icon tint, since web never renders
   `NativeTabs`; the wheel's scroll-snap *feel*; and the focus-refetch fix
@@ -343,13 +381,14 @@ their shape is decided yet — to be scoped fresh.
   grows a queue/sync story once), then auth + RLS, then one more EAS
   build, then the APK goes to friends. Track's live PR gold-flash
   remains parked/deferred as before, not scoped yet.
-- **Parking lot:** Consolidate `todayLocalDate()` (`session-repo.ts`) and
-  `formatDateLocal()`/`parseDateLocal()` (`summary-repo.ts`) into one
-  shared `src/utils/local-date.ts`. Not urgent — each is currently used
-  in exactly one file, so there's no drift yet (unlike the old `fmt()`
-  case, which was the same logic silently diverging across three
-  copies) — but it's the same shape of problem starting over. Revisit
-  once Summary's data layer is fully done (after PR detection).
+- **Parking lot:** `src/utils/local-date.ts` now EXISTS as the canonical
+  home for local-date math (landed with step 5a). `session-repo.ts`'s
+  `todayLocalDate()` and `summary-repo.ts`'s `formatDateLocal`/
+  `parseDateLocal` are still separate copies, not yet migrated onto it.
+  `summary-repo.ts` is guardrailed (see the dogfooding note at the top of
+  this section), so its migration stays parked until dogfooding concludes;
+  `session-repo.ts` is not guardrailed, so that one can move onto the
+  shared util any time.
   Also parked: **give the logging screen a distinct error state.**
   `src/app/exercise/[exerciseId].tsx:92` stores `null` on fetch failure,
   which renders "Exercise not found" — so a network error is
@@ -450,6 +489,11 @@ and `schema.sql` is `workout_set`.)
 - `reps`
 - `rpe` — rate of perceived exertion (1–10)
 - `is_warmup` — manual toggle; warm-up sets are EXCLUDED from progression + volume math
+- `created_at` — `timestamptz not null default now()`. Present in `schema.sql` since
+  the table was created, but was missing from this doc — which nearly caused an
+  unnecessary migration to be designed in the step 5a planning session. Load-bearing
+  as Calendar's performed-order source (`session-blocks.ts` sorts by `created_at`
+  then `id`).
 
 ## Derived metrics (not stored — computed)
 
@@ -600,12 +644,16 @@ OUT (roadmap):
   conname-only guard can false-positive against a same-named constraint on a
   different table and silently skip the add — leaving the table unconstrained
   with no error to notice.
-- **Treat any claim Claude Code makes about live database state as unverified.**
-  It has no read access to the Supabase database and cannot tell whether a
-  versioned SQL file has been applied. This matters most for
-  `supabase/scripts/`, which is destructive and not idempotent — never re-run
-  anything from there on the strength of such a claim. (Caught twice: it
-  asserted already-applied DDL "still needs running".)
+- **Never execute anything that mutates the live database, and any
+  DB-touching result must be reproduced by Ayhan in his own terminal
+  before it counts as verified.** (Caught twice: it asserted
+  already-applied DDL "still needs running".) `supabase/scripts/` is
+  exactly why this matters — it's destructive and not idempotent, so
+  nothing from there gets re-run on the strength of an unreproduced claim.
+  Read-only exploration, by contrast, IS available and useful: a node
+  script plus `.env` is read access, and it was used to verify step 5a
+  live against the dev DB. An earlier version of this bullet wrongly
+  claimed no read access at all.
 - Postgres treats NULLs as **distinct** in a unique index. So a
   `unique (user_id, exercise_id)` with a nullable `user_id` does not constrain
   the single-user case at all — `(null, X)` can be inserted repeatedly. It
@@ -654,7 +702,7 @@ OUT (roadmap):
   inherited `expo/tsconfig.base` sets it — so without the union a missing-key
   lookup types as `T` and a dropped guard produces no type error. See
   `getLastLoggedSetsForMuscle`.
-- **Generalising the "no read access to the database" bullet above: treat any
+- **Generalising the live-database-access bullet above: treat any
   claim about the state of a system not currently in view as unverified.** The
   live database, a file not opened this session, whether a migration ran — and
   conventions. This cuts **both ways**: if a prompt cites a convention as
@@ -663,4 +711,38 @@ OUT (roadmap):
   because the `undefined` rule above was cited across earlier sessions as
   established convention and turned out to be in no file at all — the code
   followed it, the doc had never recorded it.
+- PostgREST silently truncates results at the API `Max rows` cap (default
+  1000) with **no error**. So when a query only needs DISTINCT PARENTS,
+  query the parent table with an `!inner` child embed rather than querying
+  the children and deduping client-side. `getTrainedDaysInMonth` originally
+  selected one row per SET for the whole month (~450 rows in a heavy
+  month) purely to dedupe dates; flipped to `session` +
+  `workout_set!inner(id)`, which is <=31 rows and puts the cap structurally
+  out of reach. The failure mode mattered more than the payload size: a
+  truncated set list means a day that WAS trained silently loses its dot —
+  wrong but plausible, this project's recurring failure shape. Verified on
+  real data (`calendar-repo.ts`) that the embedded
+  `limit(1, { referencedTable })` does not interfere with `!inner`'s
+  exclusion of childless parents — limited and unlimited runs returned
+  identical date sets.
+- Parsing a `.env` file by hand (e.g. in a throwaway script): split on
+  `/\r?\n/` and strip a leading UTF-8 BOM before matching. This machine's
+  `.env` has CRLF line endings, and a regex like `/^([A-Z0-9_]+)=(.*)$/`
+  run against `'\n'`-split lines matches **nothing** — in JS, `.` does not
+  match `'\r'` (it's a line terminator) and `$` without the `m` flag only
+  matches at the end of the whole input. Every line silently fails to
+  match and the parsed env object comes back empty, which surfaced not as
+  a parse error but as an opaque `supabase-js` "supabaseUrl is required"
+  stack trace three layers downstream. Same CRLF root cause as this
+  machine's `git` CRLF warnings. Any script that reads env vars by hand
+  should guard immediately after loading them: if a required var is
+  missing or empty, print **which one** and exit, rather than letting a
+  downstream library throw an unrelated-looking error.
+- Local-date bucketing (`src/utils/local-date.ts`) is now confirmed
+  against real data, not just reasoned about: a session dated `2026-07-30`
+  carries `created_at` values from `2026-07-29T19:31Z` to
+  `2026-07-29T20:17Z` — `00:31`–`01:17` **local** at UTC+5. A UTC-derived
+  date key would have filed that entire session under July 29 instead. Any
+  new date key or month boundary must be computed in local time via this
+  file, not derived from a `timestamptz`'s UTC representation directly.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

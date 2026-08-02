@@ -315,6 +315,78 @@ Priority order top-to-bottom (unchanged from `CLAUDE.md`):
    with its category color (contained to the bar fill itself, not the
    whole card).
 
+### Calendar — Phase 3
+
+Spec only — step 5a (the read-only data layer: `local-date.ts`,
+`session-blocks.ts`, `calendar-repo.ts`) is done and verified against the
+dev DB; the UI below is step 5b/5c and hasn't been built yet. Recorded here
+before any of it gets written, same as the exercise list's spec preceded
+its build.
+
+**Governing rule: Calendar is a LEDGER, not a metric.** Warm-ups are
+included throughout and count toward a day being "trained." Track and
+Summary exclude them because they skew e1RM/volume/PR math; Calendar does
+no math at all, so there's nothing for a warm-up to skew. This rule settles
+most of what follows, which is why it's stated first rather than left
+implicit.
+
+- **One month at a time. Header shows a plain session count** —
+  "JULY 2026 · 12 sessions" — never a fraction like `3/5` or `3/31`. A
+  days-elapsed denominator implies a target of training every single day,
+  so it renders as a progress bar that is permanently and correctly
+  failing. Rate/consistency is Summary's job (sessions this week, weekly
+  streak); Calendar answers "what happened," not "how am I doing." The two
+  must not compete over the same question.
+- **A trained day = a day with >=1 `workout_set` row, never a day with
+  merely a `session` row.** An empty session row is possible today:
+  `getOrCreateTodaySession` creates the row up front, and a failed set
+  insert (the current no-connectivity failure mode) leaves it childless.
+  Keying the dot off session rows would put a dot on a day with no actual
+  training logged. The same single definition drives both the dot and the
+  header count — see `calendar-repo.ts`'s `getTrainedDaysInMonth`.
+- **Dots are neutral chalk. One dot, one meaning: you trained.** NOT
+  category-coloured — 12 dots in 5 hues on one grid is the v2
+  rainbow-test-strip failure already recorded above, and it breaks the
+  max-2-accents-per-screen rule on what's potentially the busiest surface
+  in the app. Brand purple is reserved for today's ring and the selected
+  day, keeping the screen at one accent total. Muscles-worked belongs in
+  the day detail, where there's room to show it without competing with the
+  grid.
+- **Day detail is a pushed route (`/day/[date]`), not a modal or bottom
+  sheet.** Three reasons: a real session can run long enough to need proper
+  scrolling; params-in-the-URL matches every other navigation pattern
+  already in this app; and this codebase has already been bitten once by
+  list virtualization inside a `Modal` (the `initialScrollIndex` /
+  `onContentSizeChange` trap in `wheel-picker-modal.tsx`), with no reason
+  to walk back into that trap here.
+- **Because it's a pushed route, Calendar stays mounted underneath it — so
+  the month query goes on `useFocusEffect` (imported from `expo-router`),
+  not `useEffect`.** Same reasoning as `fd64f34`, whose exercise-list half
+  was this exact shape: stale data reached by back-navigation rather than
+  a tab switch.
+- **Day detail renders sets in performed order, with consecutive runs of
+  the same exercise collapsed under one header.** Returning to an exercise
+  later in the session produces a SECOND block — bench → rows → bench is
+  three blocks, not two. Session order is the truth being preserved here,
+  and the interleaving is itself information: it shows whether things were
+  supersetted or run straight through. (`groupIntoSessionBlocks` in
+  `session-blocks.ts` is the pure function that does this, verified
+  synthetically against an `A A B B A` case.)
+- **Warm-up sets appear in the detail**, styled recessive per this file's
+  existing warm-up pattern (muted `#55585C`, no monospace emphasis) —
+  included per the governing rule above, but visually quiet.
+- **Empty day copy is "Nothing logged" — not "you didn't work out."** The
+  app does not have opinions about the user's week; that's the
+  no-motivational-poster-energy line from the brief, applied here. Future
+  dates render dimmed and aren't tappable at all, so they never need copy
+  in the first place.
+- **If day detail ever renders time-of-day, `created_at` must be converted
+  to local time.** It's `timestamptz` and comes back `+00:00`. Real
+  evidence from the 5a smoke run: a session dated `2026-07-30` has
+  `created_at` values from `2026-07-29T19:31Z` through `20:17Z` — `00:31`
+  to `01:17` local at UTC+5. Rendered naively, that reads as the wrong day
+  *and* the wrong time.
+
 ---
 
 ## Open decisions — resolve before/at the design tool session

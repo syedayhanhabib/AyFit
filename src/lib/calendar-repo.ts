@@ -12,33 +12,19 @@ import type { DayDetail } from '@/types/calendar';
 
 type TrainedDayRow = { date: string; workout_set: { id: string }[] };
 
-// Distinct local date strings within [year, month] having >=1 set.
-//
-// Queries `session` as the TOP-LEVEL table, not `workout_set` — deliberately
-// flipped from an earlier version that queried workout_set and embedded
-// session, which returned one row per SET for the whole month (~450 rows in
-// a heavy month) purely to dedupe dates client-side. Supabase's PostgREST
-// `Max rows` cap defaults to 1000 and truncates silently with no error, so a
-// heavy month could silently drop a trained day with no dot to show for it.
-// `session` is <=31 rows for any month, so the cap is structurally
-// unreachable from this query.
+// Distinct local date strings within [year, month] having >=1 set. Queries
+// `session` as the top-level table, not `workout_set` — see Build
+// conventions' PostgREST max-rows bullet in CLAUDE.md for why.
 //
 // workout_set!inner(id) is the load-bearing part: !inner makes it an INNER
 // JOIN, so sessions with ZERO sets are excluded — that's what keeps the
 // "trained day" definition at the top of this file (>=1 workout_set row,
 // never merely a session row) intact. Dropping the !inner would silently
 // widen the definition to "a day with a session row", which is exactly the
-// empty-session bug that definition exists to avoid.
-//
-// The embedded limit(1, { referencedTable: 'workout_set' }) only trims the
-// child array to 1 id per session (we never read the id, only whether the
-// session survives the inner join) — same embedded-limit mechanism as
-// getLastLoggedSetsForMuscle in workout-set-repo.ts. PostgREST applies an
-// embedded limit inside the per-parent lateral subquery that also enforces
-// !inner's row requirement, so limiting to 1 doesn't change which sessions
-// have >=1 matching set and get included — it only trims how many of
-// those already-matched ids come back. Cross-checked in
-// scripts/smoke-calendar-repo.mjs against the same query without the limit.
+// empty-session bug that definition exists to avoid. The embedded
+// limit(1, { referencedTable: 'workout_set' }) is verified not to interfere
+// with that exclusion — limited and unlimited runs returned identical date
+// sets against real data (see CLAUDE.md).
 export async function getTrainedDaysInMonth(year: number, month: number): Promise<string[]> {
   const { start, end } = getMonthRange(year, month);
 

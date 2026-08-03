@@ -330,9 +330,13 @@ no math at all, so there's nothing for a warm-up to skew. This rule settles
 most of what follows, which is why it's stated first rather than left
 implicit.
 
-- **One month at a time. Header shows a plain day-trained count** —
-  "JULY 2026 · 12 days trained" — never a fraction like `3/5` or `3/31`,
-  and never "sessions." `getTrainedDaysInMonth` returns DISTINCT DATES, so
+- **One month at a time. Header shows a plain day-trained count on its own
+  line below the month and year** — "JULY 2026" with "12 days trained"
+  beneath it, not inline with an interpunct, because a month name plus a
+  growing count sharing one 16px-semibold line risks wrapping depending on
+  the month and the digit count, and a wrap would shift the grid below it
+  unpredictably from month to month — never a fraction like `3/5` or
+  `3/31`, and never "sessions." `getTrainedDaysInMonth` returns DISTINCT DATES, so
   two sessions logged on the same day count once; labelling that
   "sessions" would quietly reintroduce the exact session-vs-day confusion
   the trained-day definition below exists to prevent. A days-elapsed

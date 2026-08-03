@@ -374,31 +374,79 @@ their shape is decided yet — to be scoped fresh.
   **Verification, and its limits:** `buildMonthGrid` was independently
   cross-checked against Python's Monday-first `calendar` module for every
   month 1970–2100 (1,572 months) — row counts, blank positions, and date
-  keys all matched. `calendar.tsx` is **NOT device-verified** — correctness
-  was confirmed against the dev DB and via computed styles in a web preview
-  only (July's dots landed on 28/29/30, matching 5a's smoke output). Every
-  perceptual question is deferred to a single device pass at 5c (checklist
-  below).
-  **5c on-device checklist** (deliberately deferred, not skipped): dot
-  weight (6px, `Palette.text` chalk — too heavy, too faint, or right?);
-  today's ring (30dp circle, 1.5 border, `Palette.brand` — reads as
-  intentional or as a rendering artifact?); arrow thumb-reach at the top of
-  a 6.3" screen (48pt is spec-compliant and still possibly awkward
-  one-handed); and the permanent ~48dp empty band between the header and
-  the weekday row on the CURRENT month, from the reserved-but-empty Today
-  row (breathing room, or a hole? — this is the default view, so it's what
-  most users see first). Header wrap is deliberately NOT on this list:
-  moving the count to its own line eliminated that question rather than
-  deferring it.
-- **Next:** Step 5c — the `/day/[date]` detail route: chronological
-  exercise blocks from `getSessionDayDetail`, warm-ups included and styled
-  recessive, "Nothing logged" as the route's own empty state for direct
-  URL hits, and making dotted cells pressable (they're inert until this
-  route exists). The 5c device pass covers the on-device checklist above
-  at the same time. Profile: still unbuilt from its placeholder state,
-  unblocked since it shares no files with the tested surface. Track
-  itself: fix whatever Track/Summary issues the ongoing dogfooding
-  surfaces (nothing finalized yet, don't guess ahead of it).
+  keys all matched. `calendar.tsx`'s grid was confirmed against the dev DB
+  and via computed styles in a web preview at the time this step landed.
+  **It is now device-verified too** — the 5c device pass (see the resolved
+  checklist below) covered the grid alongside the day-detail route, so
+  every perceptual question originally deferred here has been checked, not
+  left open.
+  **5c on-device checklist — RESOLVED, all fine** (recorded rather than
+  deleted, so the record shows these were checked rather than quietly
+  dropped): dot weight (6px, `Palette.text` chalk) reads as intentional,
+  not too heavy or too faint; today's ring (30dp circle, 1.5 border,
+  `Palette.brand`) reads as intentional, not a rendering artifact; arrow
+  thumb-reach at the top of a 6.3" screen is comfortable one-handed; and
+  the permanent ~48dp empty band between the header and the weekday row on
+  the CURRENT month reads as breathing room, not a hole. Checked alongside
+  them during the same pass: dotless cells are genuinely inert (no
+  accidental tap targets), back-navigation from `/day/[date]` returns to
+  the month that was being viewed (confirming the mounted-under-a-pushed-
+  route assumption behind `useFocusEffect`), warm-up rows are legible at
+  their recessive styling, and 2026-07-30's day detail matches the
+  expected numbering (13 sets, 3 exercises, 1-4 / 1-3 / 1-2). Header wrap
+  is deliberately NOT on this list: moving the count to its own line
+  eliminated that question rather than deferring it.
+  **Step 5c is done** in two commits: `f5f1809` — set numbering and day
+  totals in the data layer. `numberWorkingSets` numbers working sets
+  continuously per exercise across the whole day, keyed on `exerciseId` so
+  a revisited exercise continues rather than restarting; warm-ups carry
+  `workingSetNumber: undefined` and never advance the counter.
+  `getDayTotals` returns total sets (warm-ups included, per the ledger
+  rule) and DISTINCT exercise count, not block count. `getSessionDayDetail`
+  composes both, so the UI does no arithmetic. `groupIntoSessionBlocks`
+  itself untouched, so its existing 8-case verification still holds.
+  `bdd4a6a` — `src/app/day/[date].tsx` plus pressable dotted cells in
+  `calendar.tsx`, and `src/utils/date-display.ts` (month names shared with
+  `calendar.tsx` rather than duplicated — the `fmt()` duplication the
+  parking lot exists to prevent). Four distinct states: loading, loaded,
+  "Nothing logged", and an explicit fetch error that never falls through
+  to the empty state. The route param is validated against `YYYY-MM-DD`
+  BEFORE querying, so a malformed deep link renders the empty state
+  instead of surfacing a PostgREST 400 as a load failure. Only dotted
+  cells are pressable; dotless cells are fully inert.
+  **Numbering verification:** the smoke script's expected output was
+  written BEFORE any code existed, checked against 2026-07-30 whose
+  contents were already independently known from 5a's run — 13 sets, 3
+  exercises, numbering 1-4 / 1-3 / 1-2 with warm-ups unnumbered. That's the
+  assertion that couldn't be retrofitted to match a buggy implementation.
+  Claude Code's own synthetic expectations had to be corrected twice
+  during 5c-i — it had assumed per-block reset instead of
+  continuous-per-exercise numbering — the algorithm was right and the test
+  was wrong, worth recording precisely because "the test was wrong" is
+  also how a bug gets ratified.
+  **Two small things flagged in 5c-ii's review, checked just now and both
+  fine:** `day/[date].tsx`'s working-set index uses `padStart(2, '0')`
+  ("01", "02") — compared against Track's `SetRow` (`set-row.tsx:29`),
+  which renders its own index the same way (`String(index + 1).padStart(2,
+  '0')`), so the two screens already agree; no divergence, no action
+  needed. And reimplementing a back chevron in `day/[date].tsx` rather
+  than importing Track's `BackButton` was the right call — `BackButton`
+  lives at `src/components/track/back-button.tsx`, colocated under Track
+  rather than shared top-level infrastructure, confirmed by checking where
+  the file actually is rather than assuming.
+  **Still open on Calendar:** the return-to-an-exercise-later case is
+  unverified against real data. Both halves depend on it — that
+  `groupIntoSessionBlocks` emits a SECOND block for a revisited exercise,
+  and that numbering continues into it (4, 5) rather than restarting at
+  1 — and only synthetic cases cover either. Nothing but a real workout
+  that doubles back on a lift will produce this data. Action item:
+  deliberately do that during ongoing dogfooding (e.g. bench, something
+  else, bench again), then open that day in Calendar.
+- **Next:** Calendar is complete — data layer, month grid, day detail,
+  navigation, all device-verified. Next is EITHER Profile (still unbuilt
+  from its placeholder state, unblocked since it shares no files with the
+  tested surface) OR the Track/Summary fix list once dogfooding wraps —
+  Ayhan's call, not to be assumed here.
   **Phase 1.5's on-device pass is now confirmed complete** — the three
   items it used to owe (the tab-bar icon tint, since web never renders
   `NativeTabs`; the wheel's scroll-snap *feel*; and the focus-refetch fix
@@ -448,9 +496,13 @@ their shape is decided yet — to be scoped fresh.
   midnight — the brand ring can briefly sit on yesterday's date. Minor,
   and only reachable by late-night training with the screen left open (see
   the 07-30 late-night evidence above).
-  Also parked: the two arrow `Pressable`s in `calendar.tsx` have no
-  `accessibilityLabel` — a screen reader announces nothing for either
-  chevron. Cheap fix, do it whenever.
+  Also parked: `day/[date].tsx` renders a working set's number via
+  `String(set.workingSetNumber)` guarded by `set.isWarmup`, which leans on
+  a correlation the type system doesn't know about — `isWarmup` being
+  `false` does not narrow `number | undefined`, so if that invariant ever
+  broke this would render the literal string "undefined". Narrowing on
+  `set.workingSetNumber === undefined ? 'W' : ...` instead would be
+  equivalent today and compiler-enforced. Cheap fix, do it whenever.
   Also parked, low priority: `month-grid.ts`'s `new Date(y, m, d)`
   construction, at local midnight, can roll back a day in a timezone whose
   DST transition happens exactly at midnight — which would duplicate one

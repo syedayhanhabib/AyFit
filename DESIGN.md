@@ -330,6 +330,8 @@ no math at all, so there's nothing for a warm-up to skew. This rule settles
 most of what follows, which is why it's stated first rather than left
 implicit.
 
+**Month grid.**
+
 - **One month at a time. Header shows a plain day-trained count, on its
   own line below the month and year** — "JULY 2026" with "12 days trained"
   beneath it, not inline with an interpunct. A month name plus a growing
@@ -380,6 +382,27 @@ implicit.
   off rather than an obvious bug. Verified by reading `summary-repo.ts`
   directly — reading is fine while it's dogfooding-guardrailed against
   modification; only editing it is not.
+- **Because it's a pushed route, Calendar stays mounted underneath it — so
+  the month query goes on `useFocusEffect` (imported from `expo-router`),
+  not `useEffect`.** Same reasoning as `fd64f34`, whose exercise-list half
+  was this exact shape: stale data reached by back-navigation rather than
+  a tab switch.
+- **No day cell without a dot is tappable — past or future.** The absence
+  of a dot IS the empty state, rendered inline at a glance for every day of
+  the month simultaneously; pushing a route to say "nothing happened"
+  again in words would be a screen transition carrying zero new
+  information. "Nothing logged" copy still exists, but it's `/day/[date]`'s
+  own defensive empty state, not something the grid ever navigates you to.
+  It's genuinely reachable, just not from the grid: `getSessionDayDetail`
+  returns `null` for any date hit directly by URL (a bookmark, a deep link,
+  a typo'd date), and a route that can render `null` needs copy for that
+  case rather than crashing or going blank. The app does not have opinions
+  about the user's week either way; that's the no-motivational-poster-
+  energy line from the brief, applied here — "Nothing logged," never "you
+  didn't work out."
+
+**Day detail.**
+
 - **Day detail is a pushed route (`/day/[date]`), not a modal or bottom
   sheet.** Three reasons: a real session can run long enough to need proper
   scrolling; params-in-the-URL matches every other navigation pattern
@@ -387,11 +410,6 @@ implicit.
   list virtualization inside a `Modal` (the `initialScrollIndex` /
   `onContentSizeChange` trap in `wheel-picker-modal.tsx`), with no reason
   to walk back into that trap here.
-- **Because it's a pushed route, Calendar stays mounted underneath it — so
-  the month query goes on `useFocusEffect` (imported from `expo-router`),
-  not `useEffect`.** Same reasoning as `fd64f34`, whose exercise-list half
-  was this exact shape: stale data reached by back-navigation rather than
-  a tab switch.
 - **Day-detail header: the date, plus a plain count line mirroring the
   month header's structure** — e.g. "13 sets · 3 exercises." Both numbers
   are derivable straight from `getSessionDayDetail`'s existing return
@@ -423,23 +441,13 @@ implicit.
   rule above. Grouping warm-ups into their own sub-section within a block
   would reorder them, and performed order is the entire reason this
   screen exists. Side benefit: a trailing warm-up logged after working
-  sets becomes plainly visible here, in order — turning one of CLAUDE.md's
-  two unconfirmed dogfooding checks (a trailing warm-up not displacing a
-  working set's subtitle, from commit 3) from something that has to be
-  hunted for into something visible at a glance.
-- **No day cell without a dot is tappable — past or future.** The absence
-  of a dot IS the empty state, rendered inline at a glance for every day of
-  the month simultaneously; pushing a route to say "nothing happened"
-  again in words would be a screen transition carrying zero new
-  information. "Nothing logged" copy still exists, but it's `/day/[date]`'s
-  own defensive empty state, not something the grid ever navigates you to.
-  It's genuinely reachable, just not from the grid: `getSessionDayDetail`
-  returns `null` for any date hit directly by URL (a bookmark, a deep link,
-  a typo'd date), and a route that can render `null` needs copy for that
-  case rather than crashing or going blank. The app does not have opinions
-  about the user's week either way; that's the no-motivational-poster-
-  energy line from the brief, applied here — "Nothing logged," never "you
-  didn't work out."
+  sets becomes plainly visible here, in order — which is a reproduction
+  AID for one of CLAUDE.md's two unconfirmed dogfooding checks (a trailing
+  warm-up not displacing a working set's subtitle, from commit 3), not a
+  confirmation of it. Calendar makes the DATA CONDITION visible — that a
+  trailing warm-up exists on some exercise that day, the hard part of
+  reproducing the bug — but the check itself is about Track's subtitle
+  rendering, which Calendar cannot confirm.
 - **If day detail ever renders time-of-day, `created_at` must be converted
   to local time.** It's `timestamptz` and comes back `+00:00`. Real
   evidence from the 5a smoke run: a session dated `2026-07-30` has

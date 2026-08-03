@@ -330,13 +330,17 @@ no math at all, so there's nothing for a warm-up to skew. This rule settles
 most of what follows, which is why it's stated first rather than left
 implicit.
 
-- **One month at a time. Header shows a plain session count** —
-  "JULY 2026 · 12 sessions" — never a fraction like `3/5` or `3/31`. A
-  days-elapsed denominator implies a target of training every single day,
-  so it renders as a progress bar that is permanently and correctly
-  failing. Rate/consistency is Summary's job (sessions this week, weekly
-  streak); Calendar answers "what happened," not "how am I doing." The two
-  must not compete over the same question.
+- **One month at a time. Header shows a plain day-trained count** —
+  "JULY 2026 · 12 days trained" — never a fraction like `3/5` or `3/31`,
+  and never "sessions." `getTrainedDaysInMonth` returns DISTINCT DATES, so
+  two sessions logged on the same day count once; labelling that
+  "sessions" would quietly reintroduce the exact session-vs-day confusion
+  the trained-day definition below exists to prevent. A days-elapsed
+  denominator has its own separate problem: it implies a target of
+  training every single day, so it renders as a progress bar that is
+  permanently and correctly failing. Rate/consistency is Summary's job
+  (sessions this week, weekly streak); Calendar answers "what happened,"
+  not "how am I doing." The two must not compete over the same question.
 - **A trained day = a day with >=1 `workout_set` row, never a day with
   merely a `session` row.** An empty session row is possible today:
   `getOrCreateTodaySession` creates the row up front, and a failed set
@@ -352,6 +356,15 @@ implicit.
   day, keeping the screen at one accent total. Muscles-worked belongs in
   the day detail, where there's room to show it without competing with the
   grid.
+- **Grid columns run Monday-first: Mon Tue Wed Thu Fri Sat Sun.** Not a
+  free choice — `summary-repo.ts` already buckets weekly streaks by "the
+  Monday of its week," and the Consistency card's day-by-day ledger strip
+  is Monday-first too (see `CLAUDE.md`'s Current state). If Calendar's grid
+  disagreed, the two screens would silently disagree about what "this
+  week" means, and it would surface only as a number that looks slightly
+  off rather than an obvious bug. Verified by reading `summary-repo.ts`
+  directly — reading is fine while it's dogfooding-guardrailed against
+  modification; only editing it is not.
 - **Day detail is a pushed route (`/day/[date]`), not a modal or bottom
   sheet.** Three reasons: a real session can run long enough to need proper
   scrolling; params-in-the-URL matches every other navigation pattern
@@ -375,17 +388,52 @@ implicit.
 - **Warm-up sets appear in the detail**, styled recessive per this file's
   existing warm-up pattern (muted `#55585C`, no monospace emphasis) —
   included per the governing rule above, but visually quiet.
-- **Empty day copy is "Nothing logged" — not "you didn't work out."** The
-  app does not have opinions about the user's week; that's the
-  no-motivational-poster-energy line from the brief, applied here. Future
-  dates render dimmed and aren't tappable at all, so they never need copy
-  in the first place.
+- **No day cell without a dot is tappable — past or future.** The absence
+  of a dot IS the empty state, rendered inline at a glance for every day of
+  the month simultaneously; pushing a route to say "nothing happened"
+  again in words would be a screen transition carrying zero new
+  information. "Nothing logged" copy still exists, but it's `/day/[date]`'s
+  own defensive empty state, not something the grid ever navigates you to.
+  It's genuinely reachable, just not from the grid: `getSessionDayDetail`
+  returns `null` for any date hit directly by URL (a bookmark, a deep link,
+  a typo'd date), and a route that can render `null` needs copy for that
+  case rather than crashing or going blank. The app does not have opinions
+  about the user's week either way; that's the no-motivational-poster-
+  energy line from the brief, applied here — "Nothing logged," never "you
+  didn't work out."
 - **If day detail ever renders time-of-day, `created_at` must be converted
   to local time.** It's `timestamptz` and comes back `+00:00`. Real
   evidence from the 5a smoke run: a session dated `2026-07-30` has
   `created_at` values from `2026-07-29T19:31Z` through `20:17Z` — `00:31`
   to `01:17` local at UTC+5. Rendered naively, that reads as the wrong day
   *and* the wrong time.
+
+**Month navigation: arrows only, no swipe.**
+
+- Two arrow `Pressable`s, 48pt touch targets each — NOT a swipe pager.
+  Swipe needs a horizontal pager holding three month grids at once,
+  adjacent-month prefetch so a gesture doesn't reveal a blank grid
+  mid-swipe, and a windowing/fetch-ahead policy — roughly three queries in
+  flight versus one query per tap for arrows. Momentum and snap tuning on
+  a paged list is also the exact category of problem that already cost
+  this project time once, in `wheel-picker-modal.tsx`. This doesn't
+  foreclose swipe later: `getTrainedDaysInMonth(year, month)` is already
+  the right shape for either navigation style, so this is a UI-only
+  decision that can be revisited without touching the data layer.
+- The **forward arrow is disabled on the current month** — dimmed per the
+  existing disabled-state pattern, not hidden, so the header layout
+  doesn't shift as the button toggles. There's no scheduling feature in
+  this app, so forward navigation past the current month would only ever
+  lead to an unbounded run of empty grids.
+- **Backward navigation is unbounded**, for now. Capping it at the
+  earliest logged session would cost another query to serve an edge case
+  nobody will actually reach; empty months before any real history simply
+  render empty.
+- A **"Today" text button** appears in the header only when the viewed
+  month is not the current month, and disappears otherwise — conditional
+  chrome, no accent colour. Without the condition, getting back from six
+  taps deep would cost another six taps forward; with it, the button is
+  only present when it's actually useful.
 
 ---
 

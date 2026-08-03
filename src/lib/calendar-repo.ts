@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { getMonthRange } from '@/utils/local-date';
-import { groupIntoSessionBlocks, type SortedSetRow } from '@/utils/session-blocks';
+import { getDayTotals, groupIntoSessionBlocks, numberWorkingSets, type SortedSetRow } from '@/utils/session-blocks';
 import type { DayDetail } from '@/types/calendar';
 
 // Read-only queries for the Calendar tab. Calendar is a LEDGER, not a
@@ -59,9 +59,14 @@ type DayDetailRow = {
 // Null covers BOTH "no session that day" and "session exists but has zero
 // sets" — per the repo convention (see CLAUDE.md's undefined-vs-null note),
 // null here means confirmed absent, and both cases are equally "nothing
-// logged" to the user. Does not assume one session per date: every set for
-// the date is collected regardless of which session row it belongs to, sorted
-// by created_at then id as tiebreak, and fed into session-blocks.ts.
+// logged" to the user. This is a DIFFERENT case from a warm-up set's
+// `workingSetNumber: undefined` in numberWorkingSets below — that's a pure
+// computation's "no such value for this input," not a DB-confirmed absence
+// — so this function's null return is left as-is rather than "harmonised"
+// with it. Does not assume one session per date: every set for the date is
+// collected regardless of which session row it belongs to, sorted by
+// created_at then id as tiebreak, and fed into session-blocks.ts, which
+// also derives the day's totals for the header.
 export async function getSessionDayDetail(date: string): Promise<DayDetail | null> {
   const { data, error } = await supabase
     .from('workout_set')
@@ -84,5 +89,6 @@ export async function getSessionDayDetail(date: string): Promise<DayDetail | nul
     createdAt: row.created_at,
   }));
 
-  return { date, blocks: groupIntoSessionBlocks(sortedSets) };
+  const blocks = groupIntoSessionBlocks(sortedSets);
+  return { date, blocks: numberWorkingSets(blocks), ...getDayTotals(blocks) };
 }

@@ -20,7 +20,31 @@ export type ExerciseBlock = {
   sets: CalendarSetEntry[];
 };
 
+// A set entry annotated with its working-set number. `workingSetNumber` is a
+// REQUIRED field typed `number | undefined` (not an optional property) —
+// per CLAUDE.md's undefined-vs-null convention, this is the bestE1rm()
+// shape: a pure computation's "no such value for this input," not a
+// not-yet-fetched state or a confirmed-absent-from-DB result (those are
+// null's job, and stay null elsewhere — see calendar-repo.ts). A required
+// union also means a typo'd property name fails to type-check, where an
+// optional `?:` would have silently produced the same `undefined` for a
+// genuinely different reason.
+export type NumberedSetEntry = CalendarSetEntry & { workingSetNumber: number | undefined };
+
+// Same shape as ExerciseBlock, but with numbered sets — see
+// session-blocks.ts's numberWorkingSets.
+export type NumberedExerciseBlock = {
+  exerciseId: string;
+  exerciseName: string;
+  sets: NumberedSetEntry[];
+};
+
+export type DayTotals = {
+  totalSets: number;
+  exerciseCount: number;
+};
+
 export type DayDetail = {
   date: string;
-  blocks: ExerciseBlock[];
-};
+  blocks: NumberedExerciseBlock[];
+} & DayTotals;

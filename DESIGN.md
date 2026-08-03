@@ -73,8 +73,9 @@ single, non-overlapping job, and capping how many can appear on screen
 at once.
 
 **Rule of thumb: max 2 accent colors visible on any one screen.** Usually
-that's brand-purple + one category color, or brand-purple + achievement-
-gold on a PR moment. Category color and achievement color never appear
+that's brand-purple + one category color, brand-purple + achievement-
+gold on a PR moment, or brand-purple + reference-range green on Profile's
+BMI card. Category color and achievement color never appear
 on the same element.
 
 **1. Brand color — used everywhere, all the time, restrained.**
@@ -105,6 +106,11 @@ This replaces the earlier plate-tier system (color-per-weight-tier) —
 that was a second competing color system on top of category color, which
 is exactly what made the render feel chaotic. One consistent gold for
 every PR is simpler and reads faster.
+
+**4. Reference-range color — one narrow job, one screen.**
+| Role | Hex | Use |
+|---|---|---|
+| Reference range | `#2E5D45` | The BMI normal-range band fill on Profile. Nowhere else. Deliberately desaturated so it reads as "in range" rather than as a reward, and deliberately NOT Legs green `#4CFF6B` — category color means *which muscle*, so reusing it here would state something false. |
 
 Base neutrals (`#16181B` background, `#1F2226` surface, chalk text) still
 carry every screen. Color is the exception, not the atmosphere — that's
@@ -317,11 +323,12 @@ Priority order top-to-bottom (unchanged from `CLAUDE.md`):
 
 ### Calendar — Phase 3
 
-Spec only — step 5a (the read-only data layer: `local-date.ts`,
-`session-blocks.ts`, `calendar-repo.ts`) is done and verified against the
-dev DB; the UI below is step 5b/5c and hasn't been built yet. Recorded here
-before any of it gets written, same as the exercise list's spec preceded
-its build.
+Calendar is complete — data layer, month grid, `/day/[date]` detail route,
+and navigation are all built and device-verified. The spec below is
+retained as the record of the decisions behind it, not as an unbuilt plan.
+One item remains unverified against real data: the return-to-an-exercise-
+later block split and its continuous numbering, which needs a real session
+that doubles back on a lift.
 
 **Governing rule: Calendar is a LEDGER, not a metric.** Warm-ups are
 included throughout and count toward a day being "trained." Track and
@@ -488,6 +495,189 @@ implicit.
   chrome, no accent colour. Without the condition, getting back from six
   taps deep would cost another six taps forward; with it, the button is
   only present when it's actually useful.
+
+### Profile — Phase 4
+
+**Governing rule: Profile is a reference screen, not an advice screen.** It
+holds the few scalars the rest of the app cannot derive, and everything it
+displays is computed from those. It states facts about your body; it never
+issues instructions. No targets, no rates, no "you should." This settles most
+of what follows — the BMI discipline and the TDEE fence below are both just
+this rule applied.
+
+Profile is also **the first screen outside Track that writes** (a
+`bodyweight_log` insert, a `profile` upsert), which puts it in scope for the
+offline queue story.
+
+**What it holds, and why each field earns its place.** CLAUDE.md's original
+Profile line is *bodyweight tracking ONLY if something consumes it. Don't
+store unused data.* Applied to all six:
+
+| Field | Consumed by |
+|---|---|
+| `height_cm` | BMI, TDEE |
+| bodyweight | BMI, TDEE, relative strength, goal delta, future chart |
+| `date_of_birth` → age | **TDEE only** |
+| `sex` | **TDEE only** |
+| `goal_weight_kg` | delta readout, future chart target line |
+| `name` | header greeting; becomes auth's mirror later |
+
+**DOB and sex are dead data without TDEE** — BMI uses neither. That is the
+actual argument for building the calorie estimate: not a bolt-on, but what
+makes two of the six fields legitimate.
+
+**Bodyweight is a time series, not a field.** `bodyweight_log (date,
+weight_kg)`, one canonical weigh-in per LOCAL date; "current weight" is the
+latest row, computed. Same reasoning as e1RM, Volume and PRs being
+computed-live: a mutable `weight_kg` column means every update destroys the
+prior value, and the bodyweight-over-time chart that justifies the field
+becomes impossible retroactively and permanently. Landed in `2eb5f5b`. `date`
+is written via `todayLocalDate()`, never derived from a `timestamptz`'s UTC
+face.
+
+**Inputs reuse Track's components as-is.** Weight, height and DOB go on
+`ValueChip` + `WheelPickerModal` (`src/components/track/`). Sex is a
+two-option chip pair. Name is the screen's only free-text field. Those two
+components are not guardrailed, but the guardrailed logging screen consumes
+them — so Profile uses them UNMODIFIED. If Profile needs different behaviour,
+that is a new component, not an edit.
+
+- **Height enters as ft + in, stores as cm.** Display-only conversion,
+  contained to the input. Nobody here knows their height in centimetres.
+- **No kg/lb toggle.** Everything is kg-native down to the weight wheel; a
+  display unit touches every screen for no benefit to the actual users.
+- **The screen must render sensibly with every field null** — that is the
+  day-one state, before a profile row exists at all.
+
+**BMI.** Build it, with three constraints that are not optional.
+
+*1. The scale shows geometry; the label carries the medicine.* Eight WHO
+categories cannot be legibly labelled across ~340pt, so the bar renders the
+normal-range band tinted with subtle boundary ticks, and a text line below it
+states the precise WHO category. Full granularity in words, simple shape in
+the bar:
+
+- under 16.0 — severe thinness
+- 16.0–16.9 — moderate thinness
+- 17.0–18.4 — mild thinness
+- 18.5–24.9 — normal range
+- 25.0–29.9 — overweight (pre-obese)
+- 30.0–34.9 — obesity class I
+- 35.0–39.9 — obesity class II
+- 40.0 and above — obesity class III
+
+Scale spans **15–40 linearly**; the marker clamps at either end with an
+off-scale indicator rather than the bar rescaling.
+
+*2. Colour.* The normal-range band uses the new `#2E5D45` reference-range
+token (see Design tokens above for why it is not Legs green). Marker is brand
+purple; everything else on the bar stays chalk/border neutral. That is **2
+accents, at the cap** — so nothing else on Profile may introduce a third while
+the BMI card is visible. **No PR gold anywhere on Profile**: gold means a PR
+event, and Profile shows current ratios, not events.
+
+*3. The lifter caveat is on the screen, not in the tooltip.* One quiet,
+always-visible line under the bar. BMI has no body-composition term, so lean
+mass reads as fat mass — a 178cm/95kg lifter is BMI 30.0 and is not obese.
+This app is FOR lifters, its brief says no motivational-poster energy, and
+Calendar's copy rule is already "Nothing logged," never "you didn't work out."
+A red OBESE marker on a training partner six months into progressive overload
+violates both and is also simply wrong about him.
+
+Dependency chain, stated per-element rather than all-or-nothing:
+- The BMI **number** needs height + weight.
+- The WHO **category** additionally needs age >= 18 — fixed cutoffs are
+  invalid for minors, who need age-and-sex percentile charts. Under 18 renders
+  the number plus that explanation, not a category.
+- DOB absent: number renders, category says it needs DOB.
+
+**Cutoffs are standard WHO. The Asian/South Asian thresholds** (overweight
+23.0, obese 27.5) **are named in the tooltip only, not switched into the
+scale.** A scale that disagrees with every other BMI calculator the users have
+seen reads as a bug, not as localisation.
+
+**The BMI tooltip is long by design** — a paragraph, not the glossary's usual
+2–3 lines: what it measures, what it does not, why lifters read high, the
+population caveat. RPE is three lines because RPE genuinely is that simple.
+Open check: whether `InfoTip` renders a paragraph gracefully or needs a
+scrollable variant.
+
+**Caloric maintenance (TDEE).** Mifflin-St Jeor for BMR — male:
+`10*kg + 6.25*cm - 5*age + 5`; female: `10*kg + 6.25*cm - 5*age - 161`.
+
+**The activity multiplier is derived from logged sessions, not
+self-reported.** Every other calculator asks, and everyone guesses
+optimistically. AyFit already knows.
+
+It must be a **trailing average over the last 4 COMPLETE weeks**, not
+`getConsistency()`'s `sessionsThisWeek`. An earlier version of this decision
+said to reuse `sessionsThisWeek` and that was wrong: it is a PARTIAL week, so
+on a Monday it reads 0 or 1 and TDEE would swing by hundreds of kcal across
+every week purely from where you are in it. Recorded as a correction rather
+than quietly fixed. The trailing average needs a new read-only query in a new
+repo file — permitted; `summary-repo.ts` stays untouched.
+
+Mapping average sessions/week to multiplier: 0 → 1.2, 1–2 → 1.375, 3–4 →
+1.55, 5–6 → 1.725, 7+ → 1.9. **The derivation renders alongside the number**
+("based on 3.5 sessions/week over the last 4 weeks") so it reads as a
+measurement, not magic.
+
+**The fence: one read-only number with an accuracy caveat, and nothing
+downstream consumes it.** No food logging, no macro split, no deficit or
+surplus targets. Formula TDEE runs roughly ±15–20% against measured, and the
+moment a calorie number becomes actionable in-app you have started building a
+nutrition tracker inside a lifting tracker. TDEE needs all four of sex, DOB,
+height and weight; any missing and the card is HIDDEN, not shown erroring.
+
+**Relative strength.** e1RM ÷ current bodyweight, per lift — "1.62×
+bodyweight bench." How lifters actually talk about strength, the single best
+use of the bodyweight field, and zero new tables. It is also the honest
+counterweight to BMI on the same screen: one number says your mass-to-height
+ratio is 27, the next says you press 1.6× your own bodyweight. Numbers stay
+chalk — no accent, per the 2-accent cap.
+
+**Which lifts: FAVOURITES**, intersected with lifts that have e1RM history.
+`exercise_favourite` already exists, and favourites are explicit and
+user-controlled; top-N-by-history-depth was rejected because it is implicit
+ranking, which is exactly the pattern the struck-out recency surfacing already
+rejected once. If no favourite has history, the card shows an empty state
+pointing at the star toggle. **Known wart, accepted:** favourites can include
+isolation work, and "0.3× bodyweight cable lateral raise" is technically
+correct and fairly meaningless. Tolerable because Profile ranks nothing and
+states rather than advises — recorded so it is not rediscovered as a bug.
+
+**Guardrail note, load-bearing:** the guardrail forbids MODIFYING
+`workout-set-repo.ts`, not importing from it. `getExercisesWithHistory` and
+`getE1rmHistory` are already exported and Profile calls them untouched.
+
+**Goal weight.** Nullable; the whole thing hides when unset. Renders as a
+plain delta from current weight, and later as the target line on the
+bodyweight chart — a real consumer beyond a readout. A goal the USER set is
+the user's opinion, not the app having one, so it stays inside the brief.
+**Never with a deadline or a rate** — "lose 0.5kg/week" is advice, which the
+governing rule forbids.
+
+**Bodyweight chart — deferred, with a specific reason.** Ship the log and a
+plain reverse-chronological list of entries now. Not caution: the Catmull-Rom
+smoothing and range filtering live inside `progression-card.tsx`, which is
+guardrailed. Doing it properly means extracting that math into a shared util —
+an edit to a guardrailed file. Doing it improperly means a second copy of the
+chart math, which is exactly the `fmt()` duplication the shared-util
+convention exists to prevent, already caught twice. The chart lands when the
+guardrail lifts and the math is extracted once. Nothing is lost meanwhile: the
+data accrues from day one, and that is the part that cannot be backfilled.
+
+**Explicitly out:** steps, water intake, sleep, resting heart rate. Nothing in
+AyFit consumes any of them; each is a field maintained forever for no output.
+Same rule that killed implicit-recency surfacing.
+
+**Screen order, top to bottom:** header (wordmark + name) → bodyweight
+(current, log today's, goal delta — first because it is the only thing logged
+repeatedly here) → BMI → relative strength → TDEE → details (name, DOB, sex,
+height — rarely changed, so last).
+
+**Glossary additions:** `BMI` (long-form, per above), `TDEE`, `relative
+strength`.
 
 ---
 

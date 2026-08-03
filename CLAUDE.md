@@ -18,10 +18,12 @@ shape of any existing table in schema.sql. New repo files that only read
 existing tables, and new strictly-additive tables, are fine. Editing what
 already exists is not, until testing concludes.
 
-**Active build track: Calendar + Profile.** Both are still placeholder
-screens. Development continues on them concurrently with the dogfooding
-above, since neither shares files with the tested surface. Nothing about
-their shape is decided yet — to be scoped fresh.
+**Calendar is complete and closed out** — data layer, month grid,
+`/day/[date]`, navigation, all device-verified on the Pixel 7. One item
+remains outstanding: the return-to-an-exercise-later case needs a real
+session that deliberately doubles back on a lift. **Active build track:
+Profile** — unblocked because it shares no files with the guardrailed
+surface. Profile's design spec is DESIGN.md's "Profile — Phase 4" section.
 
 - **Last shipped:** commit 4 — exercise favourites + Back's
   `movement_group` section labels on the exercise list, in three parts:
@@ -442,11 +444,22 @@ their shape is decided yet — to be scoped fresh.
   that doubles back on a lift will produce this data. Action item:
   deliberately do that during ongoing dogfooding (e.g. bench, something
   else, bench again), then open that day in Calendar.
+  **Step 6a is done** — commit `2eb5f5b`, "schema: add profile and
+  bodyweight_log tables". Additive DDL only, zero existing tables touched,
+  applied to the live dev DB and verified by Ayhan in the Supabase SQL
+  editor: all 8 constraints present with Postgres's auto-generated names,
+  both partial indexes present with their `WHERE` clauses intact, and BOTH
+  NULL-uniqueness guards proven by deliberately colliding inserts inside a
+  rolled-back transaction rather than assumed. Both tables confirmed empty
+  afterwards.
 - **Next:** Calendar is complete — data layer, month grid, day detail,
-  navigation, all device-verified. Next is EITHER Profile (still unbuilt
-  from its placeholder state, unblocked since it shares no files with the
-  tested surface) OR the Track/Summary fix list once dogfooding wraps —
-  Ayhan's call, not to be assumed here.
+  navigation, all device-verified. The call is made: Profile is the active
+  track. Remaining Profile sequence: 6b docs spec (this commit), 6c pure
+  utils (`bmi.ts`, `tdee.ts`, `age.ts` — no Supabase import, same
+  math-vs-fetching split as `pr-detection.ts`/`session-blocks.ts`), 6d repo
+  layer (`profile-repo.ts`, `bodyweight-repo.ts`, plus the new read-only
+  4-complete-week session-average query), 6e UI shell, 6f BMI scale via a
+  Claude Design pass, 6g wiring.
   **Phase 1.5's on-device pass is now confirmed complete** — the three
   items it used to owe (the tab-bar icon tint, since web never renders
   `NativeTabs`; the wheel's scroll-snap *feel*; and the focus-refetch fix
@@ -605,6 +618,59 @@ and `schema.sql` is `workout_set`.)
   as Calendar's performed-order source (`session-blocks.ts` sorts by `created_at`
   then `id`).
 
+### profile
+Scalars only. Deliberately does NOT hold current bodyweight — see
+`bodyweight_log`.
+- `id` — uuid, `gen_random_uuid()`
+- `user_id` — nullable, no FK (no users table yet), same as
+  `exercise_favourite.user_id`
+- `name` — nullable text. Becomes a mirror of the auth user record once auth
+  lands, not the source of truth.
+- `date_of_birth` — nullable date. Age is computed, never stored. No CHECK
+  against `current_date`: that needs a non-immutable function inside a CHECK,
+  which makes the constraint non-deterministic across dump/restore, so age
+  validation lives in the app layer where the under-18 BMI case has to be
+  handled anyway.
+- `sex` — nullable text, CHECK `is null or in ('male','female')`
+- `height_cm` — nullable `numeric(4,1)`, CHECK `is null or > 0`
+- `goal_weight_kg` — nullable `numeric(6,2)`, CHECK `is null or > 0`
+- `created_at` — `timestamptz not null default now()`
+- Deliberately NO `updated_at` — nothing consumes it.
+
+Uniqueness needs two guards: `unique (user_id)` plus a partial unique index
+`profile_singleton_anon_idx` on `((user_id is null)) where user_id is null`.
+The expression evaluates to `true` for every matching row, so a unique index
+over it caps the table at one anon profile. Verified live: the second insert
+fails with `Key ((user_id IS NULL))=(t) already exists`.
+
+### bodyweight_log
+A time series, not a column on `profile` — so history can never be
+overwritten, which is what makes a bodyweight-over-time chart and
+relative-strength math possible. Same computed-live philosophy as e1RM,
+Volume and PRs: no stored current-weight value that can go stale.
+- `id` — uuid, `gen_random_uuid()`
+- `user_id` — nullable, no FK
+- `date` — `date not null`. A LOCAL date, written via `todayLocalDate()`,
+  never derived from a `timestamptz`'s UTC representation.
+- `weight_kg` — `numeric(6,2) not null`, CHECK `> 0`. Same type as
+  `workout_set.weight_kg` deliberately, so bodyweight and lifted weight can
+  never differ by a rounding behaviour.
+- `created_at` — `timestamptz not null default now()`
+
+One canonical weigh-in per date; the write path is an upsert on conflict.
+Uniqueness again needs two guards: `unique (user_id, date)` plus a partial
+unique index `bodyweight_log_date_anon_idx` on `(date) where user_id is null`.
+Verified live: the second same-date insert fails.
+
+Both tables' constraints are ANONYMOUS in `schema.sql`, matching the file's
+existing style (`workout_set.weight_kg`'s bare `check`,
+`exercise_favourite`'s bare `unique`). Postgres auto-generates
+`profile_sex_check`, `profile_user_id_key`,
+`bodyweight_log_user_id_date_key` etc. — confirmed identical against
+`pg_constraint` on the live dev DB, so explicit names bought nothing.
+`exercise_movement_group_check` stays named because it is added via `ALTER`
+inside a `DO`-block guard, which requires a name to filter on.
+
 ## Derived metrics (not stored — computed)
 
 ### Estimated 1RM (e1RM) — the progression metric
@@ -644,6 +710,8 @@ Workout history by date. Tap a day, see what was logged.
 ### Profile (later, minimal)
 Name, and bodyweight tracking ONLY if something consumes it
 (e.g. bodyweight-over-time chart, or relative-strength math). Don't store unused data.
+Now specced in full in DESIGN.md's "Profile — Phase 4" section, where the
+"only if something consumes it" rule above is applied field by field.
 
 ## Cross-cutting feature: info tooltips / glossary
 
@@ -874,4 +942,19 @@ OUT (roadmap):
   would go unnoticed. Acceptable for small files that are also read
   line-by-line in review, but "N assertions pass" is never, on its own,
   evidence that the shipped code is correct.
+- **Claude Code's chat summaries truncate fenced code and diff blocks in the
+  web-relay loop** — it says "here's the diff:" and nothing follows. So never
+  rely on CC's rendering of code, a diff, or file contents; Ayhan runs
+  `git --no-pager diff` or `cat` in his own terminal and pastes the raw
+  output. The same applies to any claim about git state: CC's "pushed clean,
+  X on top of Y" was right most times but is not evidence. Verify with
+  `git status --porcelain; git status -sb; git --no-pager log --oneline -2`.
+  Reading files is what CC is reliable at; SHOWING them through the relay is
+  what is not.
+- **The terminal is Windows PowerShell, not bash.** No `\` line
+  continuations, no `do`/`done` loops, no `&&` chaining assumptions. Paths
+  containing brackets need quoting or `-LiteralPath` — e.g.
+  `src/app/day/[date].tsx` — because PowerShell and git both read `[...]` as
+  a wildcard. Any command written for Ayhan to paste must be
+  PowerShell-valid as written.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

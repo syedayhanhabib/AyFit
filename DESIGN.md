@@ -358,9 +358,18 @@ implicit.
   rainbow-test-strip failure already recorded above, and it breaks the
   max-2-accents-per-screen rule on what's potentially the busiest surface
   in the app. Brand purple is reserved for today's ring and the selected
-  day, keeping the screen at one accent total. Muscles-worked belongs in
-  the day detail, where there's room to show it without competing with the
-  grid.
+  day, keeping the screen at one accent total.
+  **Correction, walked back deliberately, not quietly dropped:** an earlier
+  version of this bullet said muscles-worked belonged in the day detail,
+  "where there's room to show it." Muscle chips there are now DEFERRED, not
+  planned. `getSessionDayDetail` returns exercise names and sets, no muscle
+  data — a chip needs a new join through `exercise.muscle_id`, and then a
+  colour decision, which would drag category colours onto a second screen
+  immediately after this file recorded why they failed on the first one.
+  The block list directly below the header already states what was
+  trained — a typical day is three exercise names — so chips would just
+  restate that, in colour, at the cost of an extra query. If muscle chips
+  ever land here, they need a reason beyond "there's room."
 - **Grid columns run Monday-first: Mon Tue Wed Thu Fri Sat Sun.** Not a
   free choice — `summary-repo.ts` already buckets weekly streaks by "the
   Monday of its week," and the Consistency card's day-by-day ledger strip
@@ -383,6 +392,11 @@ implicit.
   not `useEffect`.** Same reasoning as `fd64f34`, whose exercise-list half
   was this exact shape: stale data reached by back-navigation rather than
   a tab switch.
+- **Day-detail header: the date, plus a plain count line mirroring the
+  month header's structure** — e.g. "13 sets · 3 exercises." Both numbers
+  are derivable straight from `getSessionDayDetail`'s existing return
+  value, so this costs no extra query. Warm-ups COUNT toward the set
+  total, per the governing ledger rule at the top of this section.
 - **Day detail renders sets in performed order, with consecutive runs of
   the same exercise collapsed under one header.** Returning to an exercise
   later in the session produces a SECOND block — bench → rows → bench is
@@ -391,9 +405,28 @@ implicit.
   supersetted or run straight through. (`groupIntoSessionBlocks` in
   `session-blocks.ts` is the pure function that does this, verified
   synthetically against an `A A B B A` case.)
-- **Warm-up sets appear in the detail**, styled recessive per this file's
-  existing warm-up pattern (muted `#55585C`, no monospace emphasis) —
-  included per the governing rule above, but visually quiet.
+- **Working sets are numbered CONTINUOUSLY per exercise across the whole
+  day; warm-ups are marked "W" instead of a number.** The problem this
+  solves: two "BENCH PRESS" headers on one screen reads as a duplicate-
+  render bug, and a "(2)" suffix or a "cont." label would only patch the
+  symptom. Continuous numbering means a second bench block opens at set 4,
+  which doesn't merely disambiguate — it explains itself: you came back to
+  it. It also matches how a session gets described out loud, and marking
+  warm-ups "W" keeps them present (per the governing ledger rule) without
+  letting them consume working-set numbers. This numbering is pure
+  derivable logic, so it belongs in a testable util rather than inline in
+  the component — which is why 5c splits in two: 5c-i adds numbering to
+  `session-blocks.ts`, 5c-ii builds the route.
+- **Warm-up sets appear in the detail, recessive in STYLING ONLY — and are
+  NEVER regrouped.** Styled per this file's existing warm-up pattern
+  (muted `#55585C`, no monospace emphasis), included per the governing
+  rule above. Grouping warm-ups into their own sub-section within a block
+  would reorder them, and performed order is the entire reason this
+  screen exists. Side benefit: a trailing warm-up logged after working
+  sets becomes plainly visible here, in order — turning one of CLAUDE.md's
+  two unconfirmed dogfooding checks (a trailing warm-up not displacing a
+  working set's subtitle, from commit 3) from something that has to be
+  hunted for into something visible at a glance.
 - **No day cell without a dot is tappable — past or future.** The absence
   of a dot IS the empty state, rendered inline at a glance for every day of
   the month simultaneously; pushing a route to say "nothing happened"
@@ -413,6 +446,13 @@ implicit.
   `created_at` values from `2026-07-29T19:31Z` through `20:17Z` — `00:31`
   to `01:17` local at UTC+5. Rendered naively, that reads as the wrong day
   *and* the wrong time.
+- **No per-set times in 5c, deliberately.** `created_at` is available, and
+  rest gaps between sets are genuinely interesting — the 2026-07-30
+  session has a ~21-minute gap before its last exercise — but rendering
+  times needs the UTC→local conversion the bullet above already covers,
+  plus a gap-formatting decision, and it doubles a row's information
+  density on a screen whose first job is showing what happened in order.
+  Ship the ledger first; times have to earn their place later.
 
 **Month navigation: arrows only, no swipe.**
 

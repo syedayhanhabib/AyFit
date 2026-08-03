@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,24 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getTrainedDaysInMonth } from '@/lib/calendar-repo';
 import { buildMonthGrid } from '@/utils/month-grid';
 import { parseDateLocal, todayLocalDate } from '@/utils/local-date';
+import { formatFullDate, formatMonthHeader } from '@/utils/date-display';
 import { pluralize } from '@/utils/pluralize';
 import { MinTouchTarget, Palette, Typefaces } from '@/constants/theme';
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
 
 // `year`/`month` are carried on the loaded state (not just the trained-days
 // array) so the render below can check the data actually belongs to the
@@ -120,14 +107,14 @@ export default function CalendarScreen() {
           <Pressable
             onPress={goToPreviousMonth}
             style={({ pressed }) => [styles.arrowButton, pressed && styles.arrowPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Previous month"
           >
             <MaterialCommunityIcons name="chevron-left" size={20} color={Palette.text} />
           </Pressable>
 
           <View style={styles.monthTitleContainer}>
-            <Text style={styles.monthTitle}>
-              {MONTH_NAMES[viewed.month - 1].toUpperCase()} {viewed.year}
-            </Text>
+            <Text style={styles.monthTitle}>{formatMonthHeader(viewed.year, viewed.month)}</Text>
             {/* Line height reserved unconditionally (fixed `height` in the
                 style below), same reasoning as the transparent dot/ring and
                 the dimmed-not-hidden forward arrow: the grid must not shift
@@ -143,6 +130,8 @@ export default function CalendarScreen() {
             onPress={goToNextMonth}
             disabled={isCurrentMonth}
             style={({ pressed }) => [styles.arrowButton, pressed && !isCurrentMonth && styles.arrowPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
           >
             <MaterialCommunityIcons
               name="chevron-right"
@@ -188,13 +177,38 @@ export default function CalendarScreen() {
               const dayNumber = parseDateLocal(dateKey).getDate();
               const isToday = dateKey === todayDateStr;
               const isTrained = trainedDaySet.has(dateKey);
-              return (
-                <View key={dayIndex} style={styles.dayCell}>
+              const cellContent = (
+                <>
                   <View style={[styles.dayNumberRing, isToday && styles.dayNumberRingToday]}>
                     <Text style={styles.dayNumber}>{dayNumber}</Text>
                   </View>
                   <View style={[styles.dot, isTrained && styles.dotVisible]} />
-                </View>
+                </>
+              );
+
+              // ONLY dotted cells are pressable, per DESIGN.md: the absence
+              // of a dot IS the empty state, and the grid must not navigate
+              // to a screen that just restates it. Untrained past/future
+              // days stay inert — no onPress, no pressed feedback, no
+              // accessibility role.
+              if (!isTrained) {
+                return (
+                  <View key={dayIndex} style={styles.dayCell}>
+                    {cellContent}
+                  </View>
+                );
+              }
+
+              return (
+                <Pressable
+                  key={dayIndex}
+                  onPress={() => router.push({ pathname: '/day/[date]', params: { date: dateKey } })}
+                  style={({ pressed }) => [styles.dayCell, pressed && styles.arrowPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${formatFullDate(dateKey)}, trained day`}
+                >
+                  {cellContent}
+                </Pressable>
               );
             })}
           </View>

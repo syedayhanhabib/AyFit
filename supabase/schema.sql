@@ -146,3 +146,65 @@ create table if not exists exercise_favourite (
 create unique index if not exists exercise_favourite_exercise_id_anon_idx
   on exercise_favourite (exercise_id)
   where user_id is null;
+
+-- -----------------------------------------------------------------------------
+-- profile
+--
+-- Scalars only. Deliberately does NOT hold current bodyweight — that's a time
+-- series, not a scalar, and lives in bodyweight_log below so history can never
+-- be overwritten, which is what makes a bodyweight-over-time chart and
+-- relative-strength math possible.
+--
+-- user_id has no FK: auth does not exist yet, so there is no users table to
+-- point at. It stays NULL for the single-user case, same as
+-- exercise_favourite.user_id above.
+--
+-- Deliberately no updated_at — nothing consumes it.
+-- -----------------------------------------------------------------------------
+create table if not exists profile (
+  id             uuid primary key default gen_random_uuid(),
+  user_id        uuid null,
+  name           text,
+  date_of_birth  date,
+  sex            text check (sex is null or sex in ('male', 'female')),
+  height_cm      numeric(4,1) check (height_cm is null or height_cm > 0),
+  goal_weight_kg numeric(6,2) check (goal_weight_kg is null or goal_weight_kg > 0),
+  created_at     timestamptz not null default now(),
+  unique (user_id)
+);
+
+-- Postgres treats NULLs as distinct in a unique index, so the unique
+-- constraint above constrains nothing while user_id is nullable — (null) rows
+-- could be inserted repeatedly. This partial index is what actually enforces
+-- one profile row in the single-user case.
+create unique index if not exists profile_singleton_anon_idx
+  on profile ((user_id is null))
+  where user_id is null;
+
+-- -----------------------------------------------------------------------------
+-- bodyweight_log
+--
+-- A time series, unlike profile above — history can never be overwritten,
+-- which is what makes a bodyweight-over-time chart and relative-strength math
+-- possible.
+--
+-- user_id has no FK, same reasoning as profile.user_id and
+-- exercise_favourite.user_id above.
+-- -----------------------------------------------------------------------------
+create table if not exists bodyweight_log (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid null,
+  -- a LOCAL date, written via todayLocalDate(); never derived from a
+  -- timestamptz's UTC representation
+  date       date not null,
+  weight_kg  numeric(6,2) not null check (weight_kg > 0),
+  created_at timestamptz not null default now(),
+  unique (user_id, date)
+);
+
+-- Same NULLs-are-distinct hole as profile above: the unique constraint on
+-- (user_id, date) does not stop the same date being logged twice in the
+-- single-user case. This partial index closes it.
+create unique index if not exists bodyweight_log_date_anon_idx
+  on bodyweight_log (date)
+  where user_id is null;

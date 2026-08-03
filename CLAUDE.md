@@ -358,11 +358,45 @@ their shape is decided yet — to be scoped fresh.
   phase, since that file is guardrailed and will already be open then.
   Ordering stays `created_at` then `id` as a deterministic tiebreak,
   unchanged.
-- **Next:** Step 5b — Calendar's month grid UI, wired to 5a as it's built
-  (no shell-then-wire split like Summary got: an unwired calendar grid is
-  just an empty grid, nothing to review in isolation). Then step 5c, the
-  `/day/[date]` detail route. Profile: still unbuilt from its placeholder
-  state, unblocked since it shares no files with the tested surface. Track
+  **Step 5b is done** in two commits: `5c8c8b4` — `src/utils/month-grid.ts`,
+  pure `buildMonthGrid(year, month)`: Monday-first weeks of fixed length 7,
+  explicit `null` blanks before day 1 and after the last day, row count
+  derived (4/5/6) rather than hardcoded. No Supabase or React import; date
+  keys built via `local-date.ts` so they join directly against
+  `getTrainedDaysInMonth`. `5299874` — `src/app/(tabs)/calendar.tsx`, the
+  month grid UI: neutral chalk dots, brand ring on today, day-trained count
+  on its own line, arrows with the forward one disabled on the current
+  month, a conditional Today button. Fetch runs on `useFocusEffect` with
+  TWO out-of-order guards — a per-run `cancelled` closure plus a
+  month-tagged loaded state — and a fetch failure renders an explicit error
+  state rather than falling through to an empty array. No cell is pressable
+  yet; `/day/[date]` arrives in 5c.
+  **Verification, and its limits:** `buildMonthGrid` was independently
+  cross-checked against Python's Monday-first `calendar` module for every
+  month 1970–2100 (1,572 months) — row counts, blank positions, and date
+  keys all matched. `calendar.tsx` is **NOT device-verified** — correctness
+  was confirmed against the dev DB and via computed styles in a web preview
+  only (July's dots landed on 28/29/30, matching 5a's smoke output). Every
+  perceptual question is deferred to a single device pass at 5c (checklist
+  below).
+  **5c on-device checklist** (deliberately deferred, not skipped): dot
+  weight (6px, `Palette.text` chalk — too heavy, too faint, or right?);
+  today's ring (30dp circle, 1.5 border, `Palette.brand` — reads as
+  intentional or as a rendering artifact?); arrow thumb-reach at the top of
+  a 6.3" screen (48pt is spec-compliant and still possibly awkward
+  one-handed); and the permanent ~48dp empty band between the header and
+  the weekday row on the CURRENT month, from the reserved-but-empty Today
+  row (breathing room, or a hole? — this is the default view, so it's what
+  most users see first). Header wrap is deliberately NOT on this list:
+  moving the count to its own line eliminated that question rather than
+  deferring it.
+- **Next:** Step 5c — the `/day/[date]` detail route: chronological
+  exercise blocks from `getSessionDayDetail`, warm-ups included and styled
+  recessive, "Nothing logged" as the route's own empty state for direct
+  URL hits, and making dotted cells pressable (they're inert until this
+  route exists). The 5c device pass covers the on-device checklist above
+  at the same time. Profile: still unbuilt from its placeholder state,
+  unblocked since it shares no files with the tested surface. Track
   itself: fix whatever Track/Summary issues the ongoing dogfooding
   surfaces (nothing finalized yet, don't guess ahead of it).
   **Phase 1.5's on-device pass is now confirmed complete** — the three
@@ -399,6 +433,30 @@ their shape is decided yet — to be scoped fresh.
   the normal experience. Fix is a third state, not a different sentinel
   value (see the undefined-vs-null convention in Build conventions,
   where this is recorded as a symptom).
+  Also parked: **Calendar's stale-data policy on a background refetch
+  failure.** If a same-month refocus refetch fails, `calendar.tsx`
+  currently discards the dots that were already correct on screen and
+  shows the error banner instead — a real, small regression, taken
+  deliberately. Offline support (next in the sequence after dogfooding
+  wraps) will set ONE app-wide policy for stale data, retries, and error
+  surfacing; building a bespoke stale-while-revalidate for Calendar now
+  would mean writing that logic twice and throwing one copy away. Revisit
+  during the offline phase, not before.
+  Also parked: **Calendar's today-ring can go stale across local
+  midnight.** `calendar.tsx` computes `today` per render, so it refreshes
+  on refocus but not while the screen sits open uninterrupted across local
+  midnight — the brand ring can briefly sit on yesterday's date. Minor,
+  and only reachable by late-night training with the screen left open (see
+  the 07-30 late-night evidence above).
+  Also parked: the two arrow `Pressable`s in `calendar.tsx` have no
+  `accessibilityLabel` — a screen reader announces nothing for either
+  chevron. Cheap fix, do it whenever.
+  Also parked, low priority: `month-grid.ts`'s `new Date(y, m, d)`
+  construction, at local midnight, can roll back a day in a timezone whose
+  DST transition happens exactly at midnight — which would duplicate one
+  date and drop another. Does NOT apply here: Pakistan has no DST.
+  Recorded so it isn't rediscovered as a mystery if this ever ships
+  somewhere like Brazil-as-was.
 
 Rule going forward: update the "_Last updated_" line and these bullets at the
 end of each session. This section is the source of truth for "where am I."
@@ -745,4 +803,23 @@ OUT (roadmap):
   date key would have filed that entire session under July 29 instead. Any
   new date key or month boundary must be computed in local time via this
   file, not derived from a `timestamptz`'s UTC representation directly.
+- Reserving layout space to avoid a shift is a FREQUENCY judgement, not a
+  blanket rule. Reserve height for chrome that toggles OFTEN so the layout
+  doesn't jump: `calendar.tsx` reserves the Today row's 48dp and the count
+  line's 20dp, and dims the forward arrow rather than hiding it, because
+  all three toggle on every month change. Do NOT reserve space for the
+  EXCEPTIONAL: the fetch-error banner stays conditionally rendered, because
+  permanently reserving ~29dp to avoid a shift that almost never happens
+  pays the cost always to avoid it rarely. Same principle, opposite
+  conclusions — decided by how often the thing actually appears, not by a
+  rule that says "always reserve" or "never reserve." Recorded so a later
+  pass doesn't "fix" this into false symmetry.
+- Synthetic tests for a pure util test a COPY of it, not the shipped file,
+  in this project — there's no TS test runner, so verification scripts
+  (e.g. for `month-grid.ts`, `session-blocks.ts`) reimplement the function
+  inline in a throwaway `.mjs`. That validates the ALGORITHM, not the file
+  that actually ships; a divergence between the copy and the real file
+  would go unnoticed. Acceptable for small files that are also read
+  line-by-line in review, but "N assertions pass" is never, on its own,
+  evidence that the shipped code is correct.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

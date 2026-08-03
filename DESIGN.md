@@ -330,21 +330,22 @@ no math at all, so there's nothing for a warm-up to skew. This rule settles
 most of what follows, which is why it's stated first rather than left
 implicit.
 
-- **One month at a time. Header shows a plain day-trained count on its own
-  line below the month and year** — "JULY 2026" with "12 days trained"
-  beneath it, not inline with an interpunct, because a month name plus a
-  growing count sharing one 16px-semibold line risks wrapping depending on
-  the month and the digit count, and a wrap would shift the grid below it
-  unpredictably from month to month — never a fraction like `3/5` or
-  `3/31`, and never "sessions." `getTrainedDaysInMonth` returns DISTINCT DATES, so
-  two sessions logged on the same day count once; labelling that
-  "sessions" would quietly reintroduce the exact session-vs-day confusion
-  the trained-day definition below exists to prevent. A days-elapsed
-  denominator has its own separate problem: it implies a target of
-  training every single day, so it renders as a progress bar that is
-  permanently and correctly failing. Rate/consistency is Summary's job
-  (sessions this week, weekly streak); Calendar answers "what happened,"
-  not "how am I doing." The two must not compete over the same question.
+- **One month at a time. Header shows a plain day-trained count, on its
+  own line below the month and year** — "JULY 2026" with "12 days trained"
+  beneath it, not inline with an interpunct. A month name plus a growing
+  count sharing one 16px-semibold line risks wrapping depending on the
+  month and the digit count, and a wrap would shift the grid below it
+  unpredictably from month to month, so the count gets its own stable line
+  instead. The noun is "days trained," never "sessions": `getTrainedDaysInMonth`
+  returns DISTINCT DATES, so two sessions logged on the same day count
+  once, and labelling that "sessions" would quietly reintroduce the exact
+  session-vs-day confusion the trained-day definition below exists to
+  prevent. It's also never a fraction like `3/5` or `3/31` — a
+  days-elapsed denominator implies a target of training every single day,
+  so it renders as a progress bar that is permanently and correctly
+  failing. Rate/consistency is Summary's job (sessions this week, weekly
+  streak); Calendar answers "what happened," not "how am I doing." The two
+  must not compete over the same question.
 - **A trained day = a day with >=1 `workout_set` row, never a day with
   merely a `session` row.** An empty session row is possible today:
   `getOrCreateTodaySession` creates the row up front, and a failed set
@@ -363,7 +364,8 @@ implicit.
 - **Grid columns run Monday-first: Mon Tue Wed Thu Fri Sat Sun.** Not a
   free choice — `summary-repo.ts` already buckets weekly streaks by "the
   Monday of its week," and the Consistency card's day-by-day ledger strip
-  is Monday-first too (see `CLAUDE.md`'s Current state). If Calendar's grid
+  is Monday-first too (per `summary-repo.ts`'s own comment: "which days of
+  this week (Monday-first) have a logged session"). If Calendar's grid
   disagreed, the two screens would silently disagree about what "this
   week" means, and it would surface only as a number that looks slightly
   off rather than an obvious bug. Verified by reading `summary-repo.ts`

@@ -17,6 +17,7 @@ import * as assert from 'node:assert';
 import { calculateBmi, bmiCategory, bmiMarkerPosition } from '../src/utils/bmi';
 import { calculateBmr, activityMultiplier, calculateTdee } from '../src/utils/tdee';
 import { calculateAge } from '../src/utils/age';
+import { relativeStrength } from '../src/utils/relative-strength';
 
 let passCount = 0;
 let failCount = 0;
@@ -114,5 +115,15 @@ check("calculateTdee('male', 95, 178, NaN, 3.5)", calculateTdee('male', 95, 178,
   const result = calculateTdee('male', 95, 178, 18, 3.5);
   check("calculateTdee('male', 95, 178, 18, 3.5) is a number, not undefined", typeof result, 'number');
 }
+
+// relativeStrength
+check('relativeStrength(120, 75)', relativeStrength(120, 75), 1.6);
+check('relativeStrength(121.5, 75)', relativeStrength(121.5, 75), 1.62);
+check('relativeStrength(121.567, 75)', relativeStrength(121.567, 75), 1.62);
+check('relativeStrength(150, 80)', relativeStrength(150, 80), 1.88);
+check('relativeStrength(100, 0)', relativeStrength(100, 0), undefined);
+check('relativeStrength(0, 75)', relativeStrength(0, 75), undefined);
+check('relativeStrength(NaN, 75)', relativeStrength(NaN, 75), undefined);
+check('relativeStrength(100, NaN)', relativeStrength(100, NaN), undefined);
 
 console.log(`\n${passCount} passed, ${failCount} failed, ${passCount + failCount} total`);

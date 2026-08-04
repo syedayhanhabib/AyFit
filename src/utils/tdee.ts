@@ -1,7 +1,13 @@
 // Pure math, no Supabase/React import — same math-vs-fetching split as
-// pr-detection.ts and session-blocks.ts.
-
-export type Sex = 'male' | 'female';
+// pr-detection.ts and session-blocks.ts. `import type` below erases at
+// compile time, so this file stays free of any runtime dependency.
+//
+// This import must stay RELATIVE, not `@/types/profile`: scripts/verify-
+// profile-utils.ts compiles these utils via a standalone `npx tsc --module
+// commonjs` invocation with no tsconfig, so there's no `paths` mapping
+// available (`paths` can't be passed on the CLI) — the alias would fail to
+// resolve there.
+import type { Sex } from '../types/profile';
 
 // Mifflin-St Jeor BMR, unrounded — DESIGN.md's Profile — Phase 4 formula.
 export function calculateBmr(
@@ -27,10 +33,13 @@ export function calculateBmr(
 // over buckets that are themselves coarse. Negative input clamps to 0 (no
 // such thing as negative sessions).
 export function activityMultiplier(avgSessionsPerWeek: number): number {
-  // A bad reading (NaN/Infinity — reachable from the 4-complete-week average
-  // query in 6d, where sessions/weeks can produce NaN) must never overstate
-  // maintenance calories, so unusable input clamps to the same conservative
-  // end as the true zero-sessions case, not to the highest band.
+  // A bad reading (NaN/Infinity) must never overstate maintenance calories,
+  // so unusable input clamps to the same conservative end as the true
+  // zero-sessions case, not to the highest band. This guard is defensive
+  // against any future caller, not the 4-complete-week average query in
+  // src/lib/activity-repo.ts — that query's divisor is a constant 4 and it
+  // returns undefined outright on zero history, so it cannot itself produce
+  // NaN or Infinity here.
   if (!Number.isFinite(avgSessionsPerWeek)) {
     return 1.2;
   }

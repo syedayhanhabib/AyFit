@@ -82,6 +82,12 @@ export const Palette = {
   // brand (src/components/wordmark.tsx) — no white/light stop.
   brandDeep: '#6B1FB8',
   prGold: '#FFC738',
+  // The BMI normal-range band fill on Profile. Nowhere else. Deliberately
+  // desaturated so it reads as "in range" rather than as a reward, and
+  // deliberately NOT Legs green (#4CFF6B) — category colour means "which
+  // muscle", so reusing it here would state something false. See DESIGN.md's
+  // Design tokens > Color section.
+  referenceRange: '#2E5D45',
 } as const;
 
 export type CategoryName = 'Chest' | 'Back' | 'Arms' | 'Legs' | 'Shoulders';

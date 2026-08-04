@@ -55,12 +55,17 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
   return day <= daysInMonth(year, month);
 }
 
-function daysInMonth(year: number, month: number): number {
+// Exported: also consumed by Profile's DOB day-wheel, which builds its
+// `values` array as 1..daysInMonth(year, month) — so an impossible date like
+// Feb 30 is never a selectable stop, and parseYmd's calendar-validity guard
+// above can never fire from that UI (it stays as a defense for malformed or
+// hand-typed input elsewhere).
+export function daysInMonth(year: number, month: number): number {
   const daysByMonth = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return daysByMonth[month - 1];
 }
 
-function isLeapYear(year: number): boolean {
+export function isLeapYear(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
 

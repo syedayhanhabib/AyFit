@@ -1,4 +1,12 @@
-export type GlossaryTermKey = 'rpe' | 'e1rm' | 'progressiveOverload' | 'volume' | 'warmUp';
+export type GlossaryTermKey =
+  | 'rpe'
+  | 'e1rm'
+  | 'progressiveOverload'
+  | 'volume'
+  | 'warmUp'
+  | 'bmi'
+  | 'tdee'
+  | 'relativeStrength';
 
 export type GlossaryEntry = { title: string; description: string };
 
@@ -26,5 +34,20 @@ export const GLOSSARY: Record<GlossaryTermKey, GlossaryEntry> = {
     title: 'Warm-up set',
     description:
       "Lighter preparatory sets done before your real working sets. Logged for completeness, but excluded from progress tracking (e1RM, volume, PRs) so easy sets don't skew your numbers.",
+  },
+  bmi: {
+    title: 'BMI',
+    description:
+      "Body Mass Index — weight relative to height squared, with no body-composition term. It can't tell muscle from fat, so a muscular lifter often reads high: a 178cm, 95kg lifter is BMI 30.0, not obese. It's a population screening tool, not an individual diagnosis. WHO publishes lower cutoffs for Asian and South Asian populations (overweight from 23.0, obese from 27.5), since cardiometabolic risk rises at a lower BMI in those groups — this app shows the standard cutoffs.",
+  },
+  tdee: {
+    title: 'TDEE',
+    description:
+      'Total Daily Energy Expenditure — your estimated maintenance calories. AyFit calculates this with the Mifflin-St Jeor formula, which runs roughly ±15-20% against a measured value, so treat it as a ballpark rather than a precise number. Activity level is derived from your logged training days, not a self-reported guess.',
+  },
+  relativeStrength: {
+    title: 'Relative strength',
+    description:
+      "Your estimated one-rep max (e1RM) divided by your bodyweight, e.g. '1.6x bodyweight bench'. It's how lifters compare strength across different body sizes. Note it compares your best-ever lift against your CURRENT bodyweight, not your weight at the time of that lift.",
   },
 };

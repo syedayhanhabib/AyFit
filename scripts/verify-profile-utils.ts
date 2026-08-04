@@ -16,8 +16,9 @@
 import * as assert from 'node:assert';
 import { calculateBmi, bmiCategory, bmiMarkerPosition } from '../src/utils/bmi';
 import { calculateBmr, activityMultiplier, calculateTdee } from '../src/utils/tdee';
-import { calculateAge } from '../src/utils/age';
+import { calculateAge, daysInMonth } from '../src/utils/age';
 import { relativeStrength } from '../src/utils/relative-strength';
+import { cmFromFeetInches, feetInchesFromCm, formatHeightImperial } from '../src/utils/height';
 
 let passCount = 0;
 let failCount = 0;
@@ -125,5 +126,32 @@ check('relativeStrength(100, 0)', relativeStrength(100, 0), undefined);
 check('relativeStrength(0, 75)', relativeStrength(0, 75), undefined);
 check('relativeStrength(NaN, 75)', relativeStrength(NaN, 75), undefined);
 check('relativeStrength(100, NaN)', relativeStrength(100, NaN), undefined);
+
+// daysInMonth
+check('daysInMonth(2024, 2)', daysInMonth(2024, 2), 29);
+check('daysInMonth(2026, 2)', daysInMonth(2026, 2), 28);
+check('daysInMonth(2000, 2)', daysInMonth(2000, 2), 29);
+check('daysInMonth(1900, 2)', daysInMonth(1900, 2), 28);
+check('daysInMonth(2026, 1)', daysInMonth(2026, 1), 31);
+check('daysInMonth(2026, 4)', daysInMonth(2026, 4), 30);
+
+// cmFromFeetInches
+check('cmFromFeetInches(5, 7)', cmFromFeetInches(5, 7), 170.2);
+check('cmFromFeetInches(6, 0)', cmFromFeetInches(6, 0), 182.9);
+check('cmFromFeetInches(4, 11)', cmFromFeetInches(4, 11), 149.9);
+check('cmFromFeetInches(7, 11)', cmFromFeetInches(7, 11), 241.3);
+check('cmFromFeetInches(NaN, 0)', cmFromFeetInches(NaN, 0), undefined);
+check('cmFromFeetInches(0, 0)', cmFromFeetInches(0, 0), undefined);
+
+// feetInchesFromCm
+check('feetInchesFromCm(170.2)', feetInchesFromCm(170.2), { feet: 5, inches: 7 });
+check('feetInchesFromCm(182.9)', feetInchesFromCm(182.9), { feet: 6, inches: 0 });
+check('feetInchesFromCm(149.9)', feetInchesFromCm(149.9), { feet: 4, inches: 11 });
+check('feetInchesFromCm(241.3)', feetInchesFromCm(241.3), { feet: 7, inches: 11 });
+check('feetInchesFromCm(0)', feetInchesFromCm(0), undefined);
+check('feetInchesFromCm(NaN)', feetInchesFromCm(NaN), undefined);
+
+// formatHeightImperial
+check('formatHeightImperial(170.2)', formatHeightImperial(170.2), `5'7"`);
 
 console.log(`\n${passCount} passed, ${failCount} failed, ${passCount + failCount} total`);

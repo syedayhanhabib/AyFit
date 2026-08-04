@@ -506,8 +506,9 @@ of what follows — the BMI discipline and the TDEE fence below are both just
 this rule applied.
 
 Profile is also **the first screen outside Track that writes** (a
-`bodyweight_log` insert, a `profile` upsert), which puts it in scope for the
-offline queue story.
+`bodyweight_log` insert, a `profile` insert-or-update — see CLAUDE.md's Data
+model note on why `.upsert()` is unusable for either), which puts it in scope
+for the offline queue story.
 
 **What it holds, and why each field earns its place.** CLAUDE.md's original
 Profile line is *bodyweight tracking ONLY if something consumes it. Don't
@@ -617,10 +618,14 @@ every week purely from where you are in it. Recorded as a correction rather
 than quietly fixed. The trailing average needs a new read-only query in a new
 repo file — permitted; `summary-repo.ts` stays untouched.
 
-Mapping average sessions/week to multiplier: 0 → 1.2, 1–2 → 1.375, 3–4 →
-1.55, 5–6 → 1.725, 7+ → 1.9. **The derivation renders alongside the number**
-("based on 3.5 sessions/week over the last 4 weeks") so it reads as a
-measurement, not magic.
+Mapping average trained days/week to multiplier: 0 → 1.2, 1–2 → 1.375, 3–4 →
+1.55, 5–6 → 1.725, 7+ → 1.9. The multiplier ROUNDS the average to a whole
+number of trained days before banding it, so the bands read against a whole
+number, not a fraction. **The derivation renders alongside the number**, using
+that same rounded figure, worded as "training days/week" — e.g. a raw average
+of 3.5 renders as "based on 4 training days/week over the last 4 weeks," never
+the raw 3.5, so the number and the label can never visibly disagree (the same
+failure the BMI 1dp-rounding decision exists to avoid).
 
 **The fence: one read-only number with an accuracy caveat, and nothing
 downstream consumes it.** No food logging, no macro split, no deficit or

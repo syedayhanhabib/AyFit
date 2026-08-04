@@ -1,7 +1,7 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-08-03_
+_Last updated: 2026-08-04_
 
 **Track/Summary: dogfooding in progress.** Real workouts have been logged
 on-device for several days via the EAS build. Testing is ongoing (a few
@@ -453,13 +453,18 @@ surface. Profile's design spec is DESIGN.md's "Profile — Phase 4" section.
   rolled-back transaction rather than assumed. Both tables confirmed empty
   afterwards.
 - **Next:** Calendar is complete — data layer, month grid, day detail,
-  navigation, all device-verified. The call is made: Profile is the active
-  track. Remaining Profile sequence: 6b docs spec (this commit), 6c pure
-  utils (`bmi.ts`, `tdee.ts`, `age.ts` — no Supabase import, same
-  math-vs-fetching split as `pr-detection.ts`/`session-blocks.ts`), 6d repo
-  layer (`profile-repo.ts`, `bodyweight-repo.ts`, plus the new read-only
-  4-complete-week session-average query), 6e UI shell, 6f BMI scale via a
-  Claude Design pass, 6g wiring.
+  navigation, all device-verified. Profile is the active track. Landed so
+  far, in order: `2eb5f5b` (6a, schema: profile + bodyweight_log, applied
+  and verified live), `31b2a59` (6b, docs: Profile Phase 4 spec + data
+  model + 2 build conventions), `b32035f` (6c, utils: bmi.ts, tdee.ts,
+  age.ts + regression harness), `e92ed58` (6d, data: profile-repo,
+  bodyweight-repo, activity-repo, types/profile), `606f67b` (6d-ii, data:
+  relative-strength-repo + relative-strength.ts), `d760ba0` (6e, profile:
+  v3 scaffold + Details card, ProfileFields type fix). Revised remaining
+  sequence — one wired card per commit, no separate shell/wiring split:
+  6f bodyweight card (current weight, log today's, goal delta), 6g BMI
+  card (needs a Claude Design pass for the scale), 6h relative strength
+  card, 6i TDEE card, 6j docs commit + real-device pass.
   **Phase 1.5's on-device pass is now confirmed complete** — the three
   items it used to owe (the tab-bar icon tint, since web never renders
   `NativeTabs`; the wheel's scroll-snap *feel*; and the focus-refetch fix
@@ -641,7 +646,9 @@ Uniqueness needs two guards: `unique (user_id)` plus a partial unique index
 `profile_singleton_anon_idx` on `((user_id is null)) where user_id is null`.
 The expression evaluates to `true` for every matching row, so a unique index
 over it caps the table at one anon profile. Verified live: the second insert
-fails with `Key ((user_id IS NULL))=(t) already exists`.
+fails with `Key ((user_id IS NULL))=(t) already exists`. Same `.upsert()`
+unusability and read-then-insert-or-update write path as `bodyweight_log` —
+see that section's note.
 
 ### bodyweight_log
 A time series, not a column on `profile` — so history can never be
@@ -657,10 +664,17 @@ Volume and PRs: no stored current-weight value that can go stale.
   never differ by a rounding behaviour.
 - `created_at` — `timestamptz not null default now()`
 
-One canonical weigh-in per date; the write path is an upsert on conflict.
-Uniqueness again needs two guards: `unique (user_id, date)` plus a partial
-unique index `bodyweight_log_date_anon_idx` on `(date) where user_id is null`.
-Verified live: the second same-date insert fails.
+One canonical weigh-in per date. `.upsert()` is UNUSABLE here — the write
+path is read-then-insert-or-update, for two independent reasons. First, the
+real guard is a PARTIAL unique index, and Postgres cannot infer a partial
+index for `ON CONFLICT`, because an INSERT carries no `WHERE` clause to match
+against the index predicate. Second, even setting that aside, `onConflict`
+on a nullable `user_id` won't match a row where `user_id IS NULL`, since
+NULLs are distinct in a unique index. This inverts once auth lands and
+`user_id` stops being nullable. Uniqueness again needs two guards:
+`unique (user_id, date)` plus a partial unique index
+`bodyweight_log_date_anon_idx` on `(date) where user_id is null`. Verified
+live: the second same-date insert fails.
 
 Both tables' constraints are ANONYMOUS in `schema.sql`, matching the file's
 existing style (`workout_set.weight_kg`'s bare `check`,

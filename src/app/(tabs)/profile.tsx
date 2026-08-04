@@ -7,12 +7,14 @@ import { ValueChip } from '@/components/track/value-chip';
 import { WheelPickerModal } from '@/components/track/wheel-picker-modal';
 import { Wordmark } from '@/components/wordmark';
 import { MinTouchTarget, Palette, Typefaces } from '@/constants/theme';
+import { getBodyweightHistory, logBodyweight } from '@/lib/bodyweight-repo';
 import { getProfile, saveProfile } from '@/lib/profile-repo';
-import type { Profile, ProfileFields, Sex } from '@/types/profile';
+import type { BodyweightEntry, Profile, ProfileFields, Sex } from '@/types/profile';
 import { daysInMonth } from '@/utils/age';
 import { formatFullDate } from '@/utils/date-display';
 import { fmt } from '@/utils/format-number';
 import { cmFromFeetInches, feetInchesFromCm, formatHeightImperial } from '@/utils/height';
+import { todayLocalDate } from '@/utils/local-date';
 
 // This is a SECOND copy of range() — the first lives in
 // src/app/exercise/[exerciseId].tsx. That is exactly the drift CLAUDE.md
@@ -35,18 +37,18 @@ const YEAR_VALUES = range(1930, CURRENT_YEAR, 1);
 const MONTH_VALUES = range(1, 12, 1);
 const FEET_VALUES = range(4, 7, 1);
 const INCHES_VALUES = range(0, 11, 1);
-// 40-200kg, not 30-300: 300kg is not a plausible goal weight, and the wider
+// 40-200kg, not 30-300: 300kg is not a plausible bodyweight, and the wider
 // range's 541 stops was 4.5x the logging screen's weight wheel (WEIGHT_VALUES
 // in [exerciseId].tsx, 120 stops) for no realistic benefit. 40-200 covers
-// every realistic bodyweight at 321 stops instead. Step stays 0.5 — goals
-// land on half-kilos, same as the logging screen's weight wheel. This range
-// is also the intended precedent for the bodyweight wheel in the next step,
-// so the two stay consistent with each other. WheelPickerModal has recorded
+// every realistic bodyweight at 321 stops instead. Step stays 0.5 — weights
+// land on half-kilos, same as the logging screen's weight wheel. One range,
+// shared by BOTH the goal-weight chip and the current-bodyweight chip (6f) —
+// not two near-identical 321-element ranges. WheelPickerModal has recorded
 // initialScrollIndex / onContentSizeChange fragility inside a Modal (see its
 // own file comment and CLAUDE.md), so a wheel still this much longer than
-// Track's is an explicit device-check item for 6g, not assumed fine just
-// because it scrolled correctly in the web preview.
-const GOAL_WEIGHT_VALUES = range(40, 200, 0.5);
+// Track's is an explicit device-check item for 6j's real-device pass, not
+// assumed fine just because it scrolled correctly in the web preview.
+const BODY_WEIGHT_VALUES = range(40, 200, 0.5);
 
 const DOB_YEAR_FALLBACK = 2000;
 const DOB_MONTH_FALLBACK = 6;
@@ -54,6 +56,14 @@ const DOB_DAY_FALLBACK = 15;
 const HEIGHT_FT_FALLBACK = 5;
 const HEIGHT_IN_FALLBACK = 7;
 const GOAL_WEIGHT_FALLBACK = 75;
+// Where the bodyweight wheel opens when there is no today's entry AND no
+// prior weigh-in to fall back to (day one, empty table) — see the `fallback`
+// prop on the bodyweight WheelPickerModal below. Same numeric value as
+// GOAL_WEIGHT_FALLBACK today,
+// kept as its own constant rather than reused: the two fallbacks answer
+// different questions (an unset goal vs. an unset bodyweight) that happen to
+// share a default, not one concept with two names.
+const BODY_WEIGHT_FALLBACK = 75;
 
 type Draft = {
   name: string;
@@ -121,7 +131,7 @@ function dobYmd(draft: Draft): string | undefined {
   return `${draft.dobYear}-${String(draft.dobMonth).padStart(2, '0')}-${String(draft.dobDay).padStart(2, '0')}`;
 }
 
-type ActiveField = 'dobYear' | 'dobMonth' | 'dobDay' | 'heightFt' | 'heightIn' | 'goalWeight';
+type ActiveField = 'dobYear' | 'dobMonth' | 'dobDay' | 'heightFt' | 'heightIn' | 'goalWeight' | 'bodyWeight';
 
 export default function ProfileScreen() {
   // isLoading and fetchError are SEPARATE flags rather than using a `null`
@@ -134,6 +144,26 @@ export default function ProfileScreen() {
   const [fetchError, setFetchError] = useState(false);
   const hasLoadedOnceRef = useRef(false);
 
+  // Mirrors the Details card's three-flag shape immediately above (isLoading /
+  // fetchError / hasLoadedOnce) for intra-screen consistency — its OWN copies,
+  // not shared state, so a bodyweight fetch failure can never blank the
+  // profile form and a profile fetch failure can never blank this card (see
+  // the independent-promise-chain note on loadBodyweight below). Whether a
+  // background refetch failure here should instead keep showing stale data
+  // (as this does) or surface an error is exactly the one app-wide stale-data
+  // policy CLAUDE.md parks for the offline-support phase — not decided here.
+  const [bwHistory, setBwHistory] = useState<BodyweightEntry[]>([]);
+  const [isBwLoading, setIsBwLoading] = useState(true);
+  const [bwFetchError, setBwFetchError] = useState(false);
+  const hasLoadedBwOnceRef = useRef(false);
+
+  // Set only on a failed logBodyweight write, so the wheel reopens where the
+  // user left off instead of making them re-scroll to the value that didn't
+  // save. Cleared on the next successful write.
+  const [lastAttemptedWeightKg, setLastAttemptedWeightKg] = useState<number | undefined>(undefined);
+  const [isLogging, setIsLogging] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
+
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [savedDraft, setSavedDraft] = useState<Draft>(EMPTY_DRAFT);
   const [activeField, setActiveField] = useState<ActiveField | null>(null);
@@ -142,13 +172,39 @@ export default function ProfileScreen() {
 
   const isDirty = !draftsEqual(draft, savedDraft);
 
-  // Mirrored into a ref so the focus-effect callback below (created once,
-  // deps []) can read the CURRENT dirty state rather than whatever it was
-  // when the effect was set up.
+  // Mirrored into a ref so the focus-effect callback below (deps
+  // [loadBodyweight], which is itself useCallback([])'d and so never
+  // changes — stable deps, so the callback is still effectively created
+  // once) can read the CURRENT dirty state rather than whatever it was when
+  // the effect was set up.
   const isDirtyRef = useRef(isDirty);
   useEffect(() => {
     isDirtyRef.current = isDirty;
   });
+
+  // Shared by the focus effect below AND the post-write refetch inside
+  // handleLogWeight, which is the whole reason this is its own function
+  // rather than being inlined into the effect. `isCancelled` defaults to
+  // "never cancelled" for the post-write call, which has no unmount race to
+  // guard against; the focus effect passes its own `cancelled` closure.
+  // useCallback with `[]` deps so it never itself becomes a reason for the
+  // focus effect below to re-run.
+  const loadBodyweight = useCallback(async (isCancelled: () => boolean = () => false) => {
+    try {
+      const history = await getBodyweightHistory(5);
+      if (isCancelled()) return;
+      setBwHistory(history);
+      setBwFetchError(false);
+      hasLoadedBwOnceRef.current = true;
+    } catch {
+      if (isCancelled()) return;
+      if (!hasLoadedBwOnceRef.current) {
+        setBwFetchError(true);
+      }
+    } finally {
+      if (!isCancelled()) setIsBwLoading(false);
+    }
+  }, []);
 
   // useFocusEffect (expo-router's fork), not useEffect: the tab navigator
   // keeps this screen mounted, so a mount-only effect would never re-run on
@@ -198,10 +254,15 @@ export default function ProfileScreen() {
           setIsLoading(false);
         });
 
+      // Fired alongside getProfile() above, NOT under Promise.all — an
+      // INDEPENDENT promise chain, so a bodyweight fetch failure can't touch
+      // the profile form's loading/error state and vice versa.
+      loadBodyweight(() => cancelled);
+
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [loadBodyweight]),
   );
 
   function updateDraft(patch: Partial<Draft>) {
@@ -251,6 +312,54 @@ export default function ProfileScreen() {
       : undefined;
   const isHeightPartial =
     (draft.heightFt !== undefined) !== (draft.heightIn !== undefined);
+
+  // getBodyweightHistory orders by date DESCENDING, so history[0] IS the
+  // latest entry — getLatestBodyweight() is that exact same query with
+  // limit(1), and calling both here would be two round-trips for one fact.
+  const currentEntry = bwHistory[0];
+  const todayEntry = currentEntry?.date === todayLocalDate() ? currentEntry : undefined;
+
+  // Reads savedDraft, NOT draft: draft may hold an unsaved goal-weight edit,
+  // Details sits BELOW this card so there is no live preview of that edit
+  // visible anyway, and rendering a delta against an unsaved goal means the
+  // line would appear and then silently vanish on the next refocus refetch —
+  // the same silent-revert failure isDobPartial's readout above already
+  // exists to warn about. savedDraft is what is actually persisted.
+  const goalWeightKg = savedDraft.goalWeightKg;
+  const goalDeltaKg =
+    goalWeightKg !== undefined && currentEntry !== undefined ? currentEntry.weightKg - goalWeightKg : undefined;
+  const goalDeltaText =
+    goalDeltaKg === undefined
+      ? undefined
+      // Strict === 0 is safe here: both operands come off BODY_WEIGHT_VALUES,
+      // a 0.5-step grid, and 0.5 is exactly representable in binary floating
+      // point, so the subtraction is exact and === 0 can't be missed by a
+      // rounding residue. This breaks if either value ever becomes
+      // free-text-entered rather than wheel-picked.
+      : goalDeltaKg === 0
+        ? 'At goal weight'
+        : `${fmt(Math.abs(goalDeltaKg))} kg ${goalDeltaKg > 0 ? 'above' : 'below'} goal`;
+
+  async function handleLogWeight(weightKg: number) {
+    setLogError(null);
+    setIsLogging(true);
+    try {
+      await logBodyweight(todayLocalDate(), weightKg);
+      // Deliberately NOT an optimistic update — refetch and let the
+      // CONFIRMED value render. Bodyweight is not a leaf value here: BMI,
+      // TDEE and relative strength (6g/6h/6i) all read it from this screen's
+      // state, so an optimistically-rendered weight that never actually
+      // landed would propagate one wrong number into three downstream cards
+      // that each look authoritative. One extra read is cheap against that.
+      await loadBodyweight();
+      setLastAttemptedWeightKg(undefined);
+    } catch {
+      setLastAttemptedWeightKg(weightKg);
+      setLogError('Could not save your weigh-in. Check your connection and try again.');
+    } finally {
+      setIsLogging(false);
+    }
+  }
 
   async function handleSave() {
     setSaveError(null);
@@ -305,6 +414,59 @@ export default function ProfileScreen() {
             as a device-check item for the 6j pass rather than pre-emptively
             wrapped. */}
         <ScrollView contentContainerStyle={styles.list}>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Bodyweight</Text>
+
+            {isBwLoading ? (
+              <ActivityIndicator color={Palette.textSecondary} style={styles.loading} />
+            ) : bwFetchError ? (
+              <Text style={styles.errorText}>
+                Could not load your bodyweight history. Check your connection and try again.
+              </Text>
+            ) : (
+              <>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Current weight</Text>
+                  <Text style={styles.bwCurrentValue}>
+                    {currentEntry !== undefined ? `${fmt(currentEntry.weightKg)} kg` : '—'}
+                  </Text>
+                  {goalDeltaText && <Text style={styles.readout}>{goalDeltaText}</Text>}
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <ValueChip
+                    label={todayEntry !== undefined ? "Update today's weight" : "Log today's weight"}
+                    value={todayEntry !== undefined ? fmt(todayEntry.weightKg) : ''}
+                    onPress={() => !isLogging && setActiveField('bodyWeight')}
+                  />
+                </View>
+
+                {/* Inline on-card error text, DELIBERATELY diverging from the
+                    four Summary cards' swallow-and-fallback-with-no-retry-UI
+                    pattern. That pattern is correct for READS, where a
+                    failure shows an empty state and the user retries by
+                    navigating away and back. A failed WRITE that silently
+                    does nothing is different in kind — the user believes a
+                    weigh-in was recorded, and only discovers otherwise weeks
+                    later as a hole in the history. A read/write asymmetry,
+                    not an inconsistency. */}
+                {logError && <Text style={styles.errorText}>{logError}</Text>}
+
+                {bwHistory.length > 0 && (
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>History</Text>
+                    {bwHistory.map(entry => (
+                      <View key={entry.date} style={styles.bwEntryRow}>
+                        <Text style={styles.bwEntryDate}>{formatFullDate(entry.date)}</Text>
+                        <Text style={styles.bwEntryWeight}>{fmt(entry.weightKg)} kg</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Details</Text>
 
@@ -506,12 +668,37 @@ export default function ProfileScreen() {
         <WheelPickerModal
           title="Goal weight"
           unit="kg"
-          values={GOAL_WEIGHT_VALUES}
+          values={BODY_WEIGHT_VALUES}
           value={draft.goalWeightKg}
           fallback={GOAL_WEIGHT_FALLBACK}
           onConfirm={value => {
             updateDraft({ goalWeightKg: value });
             setActiveField(null);
+          }}
+          onCancel={() => setActiveField(null)}
+        />
+      )}
+      {activeField === 'bodyWeight' && (
+        <WheelPickerModal
+          title="Weight"
+          unit="kg"
+          values={BODY_WEIGHT_VALUES}
+          // value: the selection that already exists for today (none, if you
+          // haven't weighed in today yet) — lastAttemptedWeightKg wins over
+          // todayEntry so a retry after a failed write opens where the user
+          // left off instead of making them re-scroll.
+          value={lastAttemptedWeightKg ?? todayEntry?.weightKg}
+          // fallback: where to open when there is NO selection — opening at
+          // your most recent known weight beats an arbitrary constant.
+          fallback={currentEntry?.weightKg ?? BODY_WEIGHT_FALLBACK}
+          onConfirm={value => {
+            setActiveField(null);
+            // Write immediately on confirm — no separate Log button. The
+            // write is idempotent edit-or-create (one canonical weigh-in per
+            // local date) and scroll-then-confirm is already a deliberate
+            // two-step act, so a second confirmation is friction for
+            // nothing.
+            handleLogWeight(value);
           }}
           onCancel={() => setActiveField(null)}
         />
@@ -553,6 +740,21 @@ const styles = StyleSheet.create({
   },
   readout: { fontFamily: Typefaces.uiRegular, fontSize: 14, color: Palette.textSecondary },
   chipRow: { flexDirection: 'row', gap: 10 },
+  bwCurrentValue: {
+    fontFamily: Typefaces.numeralBold,
+    fontSize: 40,
+    lineHeight: 44,
+    color: Palette.text,
+    fontVariant: ['tabular-nums'],
+  },
+  bwEntryRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  bwEntryDate: { fontFamily: Typefaces.uiRegular, fontSize: 14, color: Palette.textSecondary },
+  bwEntryWeight: {
+    fontFamily: Typefaces.numeralMedium,
+    fontSize: 14,
+    color: Palette.text,
+    fontVariant: ['tabular-nums'],
+  },
   textInput: {
     minHeight: MinTouchTarget,
     backgroundColor: Palette.background,

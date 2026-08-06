@@ -169,7 +169,7 @@ export function WeightPickerModal({ title, unit, value, fallback, min = 0.1, onC
                 a band per column — the picker selects ONE weight, not two
                 independent values, so a single highlighted row reads that
                 way. Sits above the columns, so it must not swallow drags. */}
-            <View style={styles.band} pointerEvents="none" />
+            <View style={styles.band} />
 
             <WheelColumn
               scrollRef={wholeRef}
@@ -263,6 +263,10 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.background,
     borderWidth: 1,
     borderColor: Palette.brand,
+    // Style-prop form, not the deprecated `pointerEvents` prop — same
+    // convention as wheel-picker-modal.tsx's own band. The band still must
+    // not swallow drags aimed at it; only where that's declared changed.
+    pointerEvents: 'none',
   },
   // Explicit height because wheelRow's alignItems: 'center' governs the
   // CROSS axis (vertical, since wheelRow is flexDirection: 'row') and,

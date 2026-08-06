@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { WeightPickerModal } from '@/components/profile/weight-picker-modal';
 import { ValueChip } from '@/components/track/value-chip';
 import { WheelPickerModal } from '@/components/track/wheel-picker-modal';
 import { Wordmark } from '@/components/wordmark';
@@ -37,33 +38,29 @@ const YEAR_VALUES = range(1930, CURRENT_YEAR, 1);
 const MONTH_VALUES = range(1, 12, 1);
 const FEET_VALUES = range(4, 7, 1);
 const INCHES_VALUES = range(0, 11, 1);
-// 40-200kg, not 30-300: 300kg is not a plausible bodyweight, and the wider
-// range's 541 stops was 4.5x the logging screen's weight wheel (WEIGHT_VALUES
-// in [exerciseId].tsx, 120 stops) for no realistic benefit. 40-200 covers
-// every realistic bodyweight at 321 stops instead. Step stays 0.5 — weights
-// land on half-kilos, same as the logging screen's weight wheel. One range,
-// shared by BOTH the goal-weight chip and the current-bodyweight chip (6f) —
-// not two near-identical 321-element ranges. WheelPickerModal has recorded
-// initialScrollIndex / onContentSizeChange fragility inside a Modal (see its
-// own file comment and CLAUDE.md), so a wheel still this much longer than
-// Track's is an explicit device-check item for 6j's real-device pass, not
-// assumed fine just because it scrolled correctly in the web preview.
-const BODY_WEIGHT_VALUES = range(40, 200, 0.5);
+// Both weight fields (goal weight, current bodyweight) used to share one
+// 40-200kg-at-0.5-step wheel here (WeightPickerModal replaces WheelPickerModal
+// for both below). That range and step are gone from this file now — a
+// digital scale reads to 0.1kg, and the 0.5 grid rounded away real signal, so
+// the actual two-wheel value arrays (whole kg, tenths) and their own
+// rationale now live in weight-picker-modal.tsx, the only place that needs
+// them.
 
 const DOB_YEAR_FALLBACK = 2000;
 const DOB_MONTH_FALLBACK = 6;
 const DOB_DAY_FALLBACK = 15;
 const HEIGHT_FT_FALLBACK = 5;
 const HEIGHT_IN_FALLBACK = 7;
-const GOAL_WEIGHT_FALLBACK = 75;
-// Where the bodyweight wheel opens when there is no today's entry AND no
-// prior weigh-in to fall back to (day one, empty table) — see the `fallback`
-// prop on the bodyweight WheelPickerModal below. Same numeric value as
-// GOAL_WEIGHT_FALLBACK today,
-// kept as its own constant rather than reused: the two fallbacks answer
-// different questions (an unset goal vs. an unset bodyweight) that happen to
-// share a default, not one concept with two names.
-const BODY_WEIGHT_FALLBACK = 75;
+// Where a weight wheel (goal weight OR bodyweight) opens when there is
+// nothing to open on at all — no existing value for that field AND no known
+// bodyweight to fall back to either (see the `fallback` prop on both
+// WeightPickerModal usages below: value ?? currentEntry?.weightKg ??
+// WEIGHT_FALLBACK_KG). Day-one-only in practice. Previously two separate
+// constants (GOAL_WEIGHT_FALLBACK, BODY_WEIGHT_FALLBACK) that happened to
+// share a value — now genuinely one concept, since both fields resolve
+// through the same "known bodyweight beats an arbitrary constant" precedence
+// before ever reaching this.
+const WEIGHT_FALLBACK_KG = 50;
 
 type Draft = {
   name: string;
@@ -326,16 +323,19 @@ export default function ProfileScreen() {
   // the same silent-revert failure isDobPartial's readout above already
   // exists to warn about. savedDraft is what is actually persisted.
   const goalWeightKg = savedDraft.goalWeightKg;
+  // Rounded to one decimal HERE, before both the zero-comparison below and
+  // display, because raw subtraction is not safe to compare directly: unlike
+  // the old 0.5-step wheel (where 0.5 is exactly representable in binary
+  // floating point), 0.1 is not — e.g. 78.3 - 75.1 evaluates to
+  // 3.1999999999999957, which is neither === 0 when it should be, nor a
+  // clean-looking number to render. Rounding first fixes both.
   const goalDeltaKg =
-    goalWeightKg !== undefined && currentEntry !== undefined ? currentEntry.weightKg - goalWeightKg : undefined;
+    goalWeightKg !== undefined && currentEntry !== undefined
+      ? Math.round((currentEntry.weightKg - goalWeightKg) * 10) / 10
+      : undefined;
   const goalDeltaText =
     goalDeltaKg === undefined
       ? undefined
-      // Strict === 0 is safe here: both operands come off BODY_WEIGHT_VALUES,
-      // a 0.5-step grid, and 0.5 is exactly representable in binary floating
-      // point, so the subtraction is exact and === 0 can't be missed by a
-      // rounding residue. This breaks if either value ever becomes
-      // free-text-entered rather than wheel-picked.
       : goalDeltaKg === 0
         ? 'At goal weight'
         : `${fmt(Math.abs(goalDeltaKg))} kg ${goalDeltaKg > 0 ? 'above' : 'below'} goal`;
@@ -665,12 +665,14 @@ export default function ProfileScreen() {
         />
       )}
       {activeField === 'goalWeight' && (
-        <WheelPickerModal
+        <WeightPickerModal
           title="Goal weight"
           unit="kg"
-          values={BODY_WEIGHT_VALUES}
           value={draft.goalWeightKg}
-          fallback={GOAL_WEIGHT_FALLBACK}
+          // fallback: where to open when there is no saved goal yet —
+          // opening at your most recent known weight beats an arbitrary
+          // constant, same precedence as the bodyweight wheel below.
+          fallback={currentEntry?.weightKg ?? WEIGHT_FALLBACK_KG}
           onConfirm={value => {
             updateDraft({ goalWeightKg: value });
             setActiveField(null);
@@ -679,10 +681,9 @@ export default function ProfileScreen() {
         />
       )}
       {activeField === 'bodyWeight' && (
-        <WheelPickerModal
+        <WeightPickerModal
           title="Weight"
           unit="kg"
-          values={BODY_WEIGHT_VALUES}
           // value: the selection that already exists for today (none, if you
           // haven't weighed in today yet) — lastAttemptedWeightKg wins over
           // todayEntry so a retry after a failed write opens where the user
@@ -690,7 +691,7 @@ export default function ProfileScreen() {
           value={lastAttemptedWeightKg ?? todayEntry?.weightKg}
           // fallback: where to open when there is NO selection — opening at
           // your most recent known weight beats an arbitrary constant.
-          fallback={currentEntry?.weightKg ?? BODY_WEIGHT_FALLBACK}
+          fallback={currentEntry?.weightKg ?? WEIGHT_FALLBACK_KG}
           onConfirm={value => {
             setActiveField(null);
             // Write immediately on confirm — no separate Log button. The

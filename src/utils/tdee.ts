@@ -27,24 +27,40 @@ export function calculateBmr(
   return sex === 'male' ? base + 5 : base - 161;
 }
 
-// Average logged sessions/week -> activity multiplier. Rounds to the nearest
-// whole session first, then bands — DESIGN.md gives integer bands for a
-// fractional input, and interpolating between them would be false precision
-// over buckets that are themselves coarse. Negative input clamps to 0 (no
-// such thing as negative sessions).
-export function activityMultiplier(avgSessionsPerWeek: number): number {
+// Nearest whole training day, clamped to >= 0. Extracted out of
+// activityMultiplier below so the UI's derivation line ("based on N
+// training days/week") and the multiplier band it also feeds share exactly
+// one rounding rule, rather than a number and its own label each carrying a
+// separate copy of it. Non-finite input returns 0, NOT activityMultiplier's
+// own 1.2-multiplier clamp — that clamp keeps maintenance calories
+// conservative on bad input, which is a fact about the multiplier band, not
+// about the day count rendered beside it, so it stays local to
+// activityMultiplier rather than moving in here.
+export function roundedTrainingDays(avgTrainedDaysPerWeek: number): number {
+  if (!Number.isFinite(avgTrainedDaysPerWeek)) {
+    return 0;
+  }
+  return Math.max(0, Math.round(avgTrainedDaysPerWeek));
+}
+
+// Average trained days/week -> activity multiplier. Rounds to the nearest
+// whole day first (roundedTrainingDays above), then bands — DESIGN.md gives
+// integer bands for a fractional input, and interpolating between them would
+// be false precision over buckets that are themselves coarse. Negative
+// input clamps to 0 (no such thing as negative training days).
+export function activityMultiplier(avgTrainedDaysPerWeek: number): number {
   // A bad reading (NaN/Infinity) must never overstate maintenance calories,
   // so unusable input clamps to the same conservative end as the true
-  // zero-sessions case, not to the highest band. This guard is defensive
+  // zero-days case, not to the highest band. This guard is defensive
   // against any future caller, not the 4-complete-week average query in
   // src/lib/activity-repo.ts — that query's divisor is a constant 4 and it
   // returns undefined outright on zero history, so it cannot itself produce
   // NaN or Infinity here.
-  if (!Number.isFinite(avgSessionsPerWeek)) {
+  if (!Number.isFinite(avgTrainedDaysPerWeek)) {
     return 1.2;
   }
 
-  const rounded = Math.max(0, Math.round(avgSessionsPerWeek));
+  const rounded = roundedTrainingDays(avgTrainedDaysPerWeek);
 
   if (rounded === 0) return 1.2;
   if (rounded <= 2) return 1.375;
@@ -61,7 +77,7 @@ export function calculateTdee(
   weightKg: number,
   heightCm: number,
   age: number,
-  avgSessionsPerWeek: number,
+  avgTrainedDaysPerWeek: number,
 ): number | undefined {
   const bmr = calculateBmr(sex, weightKg, heightCm, age);
   if (bmr === undefined) {
@@ -83,6 +99,6 @@ export function calculateTdee(
     return undefined;
   }
 
-  const tdee = bmr * activityMultiplier(avgSessionsPerWeek);
+  const tdee = bmr * activityMultiplier(avgTrainedDaysPerWeek);
   return Math.round(tdee / 50) * 50;
 }

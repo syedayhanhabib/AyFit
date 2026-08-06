@@ -15,7 +15,7 @@
 /// <reference types="node" />
 import * as assert from 'node:assert';
 import { calculateBmi, bmiCategory, bmiMarkerPosition } from '../src/utils/bmi';
-import { calculateBmr, activityMultiplier, calculateTdee } from '../src/utils/tdee';
+import { calculateBmr, activityMultiplier, calculateTdee, roundedTrainingDays } from '../src/utils/tdee';
 import { calculateAge, daysInMonth } from '../src/utils/age';
 import { relativeStrength } from '../src/utils/relative-strength';
 import { cmFromFeetInches, feetInchesFromCm, formatHeightImperial } from '../src/utils/height';
@@ -90,6 +90,17 @@ check("calculateBmr('male', 95, 178, 36)", calculateBmr('male', 95, 178, 36), 18
 check("calculateBmr('female', 95, 178, 36)", calculateBmr('female', 95, 178, 36), 1721.5);
 check("calculateBmr('male', 95, 178, 17)", calculateBmr('male', 95, 178, 17), 1982.5);
 
+// roundedTrainingDays
+check('roundedTrainingDays(1.0)', roundedTrainingDays(1.0), 1);
+check('roundedTrainingDays(0)', roundedTrainingDays(0), 0);
+check('roundedTrainingDays(0.25)', roundedTrainingDays(0.25), 0);
+check('roundedTrainingDays(1.4)', roundedTrainingDays(1.4), 1);
+check('roundedTrainingDays(1.5)', roundedTrainingDays(1.5), 2);
+check('roundedTrainingDays(2.5)', roundedTrainingDays(2.5), 3);
+check('roundedTrainingDays(-3)', roundedTrainingDays(-3), 0);
+check('roundedTrainingDays(NaN)', roundedTrainingDays(NaN), 0);
+check('roundedTrainingDays(Infinity)', roundedTrainingDays(Infinity), 0);
+
 // activityMultiplier
 check('activityMultiplier(0)', activityMultiplier(0), 1.2);
 check('activityMultiplier(0.4)', activityMultiplier(0.4), 1.2);
@@ -106,6 +117,16 @@ check('activityMultiplier(12)', activityMultiplier(12), 1.9);
 check('activityMultiplier(-3)', activityMultiplier(-3), 1.2);
 check('activityMultiplier(NaN)', activityMultiplier(NaN), 1.2);
 check('activityMultiplier(Infinity)', activityMultiplier(Infinity), 1.2);
+
+// The band and the day count rendered beside it, locked together by test —
+// not by a comment claiming they agree. activityMultiplier(2.5) is already
+// asserted above (1.55); roundedTrainingDays(1.0) and (2.5) are already
+// asserted in the roundedTrainingDays block above (1 and 3) — this is the
+// one new assertion the pairing needs, plus the two labels below that make
+// the pairing itself explicit rather than left to a comment.
+check('activityMultiplier(1.0)', activityMultiplier(1.0), 1.375);
+check('roundedTrainingDays(1.0) pairs with activityMultiplier(1.0)', roundedTrainingDays(1.0), 1);
+check('roundedTrainingDays(2.5) pairs with activityMultiplier(2.5)', roundedTrainingDays(2.5), 3);
 
 // calculateTdee
 check("calculateTdee('male', 95, 178, 36, 3.5)", calculateTdee('male', 95, 178, 36, 3.5), 2950);

@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GatedSection } from '@/components/profile/gated-section';
 import { WeightPickerModal } from '@/components/profile/weight-picker-modal';
 import { ValueChip } from '@/components/track/value-chip';
 import { WheelPickerModal } from '@/components/track/wheel-picker-modal';
@@ -11,7 +12,7 @@ import { MinTouchTarget, Palette, Typefaces } from '@/constants/theme';
 import { getBodyweightHistory, logBodyweight } from '@/lib/bodyweight-repo';
 import { getProfile, saveProfile } from '@/lib/profile-repo';
 import type { BodyweightEntry, Profile, ProfileFields, Sex } from '@/types/profile';
-import { daysInMonth } from '@/utils/age';
+import { calculateAge, daysInMonth } from '@/utils/age';
 import { formatFullDate } from '@/utils/date-display';
 import { fmt } from '@/utils/format-number';
 import { cmFromFeetInches, feetInchesFromCm, formatHeightImperial } from '@/utils/height';
@@ -128,6 +129,45 @@ function dobYmd(draft: Draft): string | undefined {
   return `${draft.dobYear}-${String(draft.dobMonth).padStart(2, '0')}-${String(draft.dobDay).padStart(2, '0')}`;
 }
 
+// "height, date of birth & gender" — an Oxford-comma-less list with '&'
+// before the last item, matching the exact wording the caloric-maintenance
+// gate below is specced to show.
+function joinWithAmpersand(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} & ${parts[parts.length - 1]}`;
+}
+
+type BwEntryWithChange = BodyweightEntry & { changeKg: number | undefined };
+
+// Delta from the previous (OLDER) entry, computed purely from the already-
+// fetched history array — no extra query. bwHistory is date-DESCENDING (see
+// getBodyweightHistory's own doc comment), so the older neighbour of
+// entry[i] is entry[i + 1]; the last entry in the (possibly limit-truncated)
+// array has no older neighbour AT ALL within what was fetched, and renders
+// '—' rather than silently implying a query further back that never
+// happened. Same 1dp-before-compare-or-display rounding as goalDeltaKg
+// below, and for the same reason — 0.1 is not exactly representable in
+// binary floating point.
+function withChanges(history: BodyweightEntry[]): BwEntryWithChange[] {
+  return history.map((entry, i) => {
+    const older = history[i + 1];
+    const changeKg = older ? Math.round((entry.weightKg - older.weightKg) * 10) / 10 : undefined;
+    return { ...entry, changeKg };
+  });
+}
+
+// Deltas are CHALK, never red/green — colour would editorialise the number,
+// and this design's two-accent cap (brand purple, PR gold) has no budget for
+// a third. '+' is added explicitly for a positive change since fmt() only
+// ever signs negatives (via toFixed's own sign); a zero change renders bare
+// '0', matching fmt()'s own bare-integer convention rather than a forced
+// '0.0'.
+function formatChangeKg(changeKg: number | undefined): string {
+  if (changeKg === undefined) return '—';
+  if (changeKg === 0) return '0';
+  return changeKg > 0 ? `+${fmt(changeKg)}` : fmt(changeKg);
+}
+
 type ActiveField = 'dobYear' | 'dobMonth' | 'dobDay' | 'heightFt' | 'heightIn' | 'goalWeight' | 'bodyWeight';
 
 export default function ProfileScreen() {
@@ -141,14 +181,15 @@ export default function ProfileScreen() {
   const [fetchError, setFetchError] = useState(false);
   const hasLoadedOnceRef = useRef(false);
 
-  // Mirrors the Details card's three-flag shape immediately above (isLoading /
-  // fetchError / hasLoadedOnce) for intra-screen consistency — its OWN copies,
-  // not shared state, so a bodyweight fetch failure can never blank the
-  // profile form and a profile fetch failure can never blank this card (see
-  // the independent-promise-chain note on loadBodyweight below). Whether a
-  // background refetch failure here should instead keep showing stale data
-  // (as this does) or surface an error is exactly the one app-wide stale-data
-  // policy CLAUDE.md parks for the offline-support phase — not decided here.
+  // Mirrors the Details section's three-flag shape immediately above
+  // (isLoading / fetchError / hasLoadedOnce) for intra-screen consistency —
+  // its OWN copies, not shared state, so a bodyweight fetch failure can
+  // never blank the profile form and a profile fetch failure can never
+  // blank the bodyweight section (see the independent-promise-chain note on
+  // loadBodyweight below). Whether a background refetch failure here should
+  // instead keep showing stale data (as this does) or surface an error is
+  // exactly the one app-wide stale-data policy CLAUDE.md parks for the
+  // offline-support phase — not decided here.
   const [bwHistory, setBwHistory] = useState<BodyweightEntry[]>([]);
   const [isBwLoading, setIsBwLoading] = useState(true);
   const [bwFetchError, setBwFetchError] = useState(false);
@@ -166,6 +207,11 @@ export default function ProfileScreen() {
   const [activeField, setActiveField] = useState<ActiveField | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Details is collapsed by default — this is purely local UI state, never
+  // touched by the fetch/focus effect below, so a background refetch can
+  // never surprise-collapse or surprise-expand it out from under the user.
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
 
   const isDirty = !draftsEqual(draft, savedDraft);
 
@@ -266,6 +312,25 @@ export default function ProfileScreen() {
     setDraft(prev => ({ ...prev, ...patch }));
   }
 
+  // Expands Details AND jumps straight to the named field's wheel in one tap
+  // — used by the gated sections' "Add ___ ›" links below, so unlocking a
+  // gate is one tap rather than "expand, then go find the right chip".
+  function openDetailsField(field: ActiveField) {
+    setIsDetailsExpanded(true);
+    setActiveField(field);
+  }
+
+  // Expanding is always allowed; COLLAPSING is refused while isDirty. Save
+  // lives inside the expanded block, so collapsing with unsaved edits would
+  // hide both the pending changes and the only way to commit them — an
+  // unsaved draft the user can no longer see is the same silent-revert
+  // failure class the isDobPartial readout above already exists to guard
+  // against, just reached by a tap instead of a refocus refetch.
+  function toggleDetailsExpanded() {
+    if (isDetailsExpanded && isDirty) return;
+    setIsDetailsExpanded(v => !v);
+  }
+
   function handleYearConfirm(value: number) {
     const maxDay = daysInMonth(value, draft.dobMonth ?? DOB_MONTH_FALLBACK);
     updateDraft({
@@ -307,8 +372,7 @@ export default function ProfileScreen() {
     draft.heightFt !== undefined && draft.heightIn !== undefined
       ? cmFromFeetInches(draft.heightFt, draft.heightIn)
       : undefined;
-  const isHeightPartial =
-    (draft.heightFt !== undefined) !== (draft.heightIn !== undefined);
+  const isHeightPartial = (draft.heightFt !== undefined) !== (draft.heightIn !== undefined);
 
   // getBodyweightHistory orders by date DESCENDING, so history[0] IS the
   // latest entry — getLatestBodyweight() is that exact same query with
@@ -317,7 +381,7 @@ export default function ProfileScreen() {
   const todayEntry = currentEntry?.date === todayLocalDate() ? currentEntry : undefined;
 
   // Reads savedDraft, NOT draft: draft may hold an unsaved goal-weight edit,
-  // Details sits BELOW this card so there is no live preview of that edit
+  // Details sits BELOW this section so there is no live preview of that edit
   // visible anyway, and rendering a delta against an unsaved goal means the
   // line would appear and then silently vanish on the next refocus refetch —
   // the same silent-revert failure isDobPartial's readout above already
@@ -339,6 +403,91 @@ export default function ProfileScreen() {
       : goalDeltaKg === 0
         ? 'At goal weight'
         : `${fmt(Math.abs(goalDeltaKg))} kg ${goalDeltaKg > 0 ? 'above' : 'below'} goal`;
+
+  // Everything below (identity line, gated sections, Details' collapsed
+  // summary) reads savedDraft rather than draft, same reasoning as
+  // goalWeightKg just above: these are facts about the PERSISTED profile,
+  // not a live preview of in-progress edits, so they can't flash a value
+  // that a refocus refetch then silently reverts.
+  const savedDob = dobYmd(savedDraft);
+  const age = savedDob !== undefined ? calculateAge(savedDob, todayLocalDate()) : undefined;
+  const hasName = savedDraft.name.trim() !== '';
+  const identityParts: string[] = [];
+  if (hasName) identityParts.push(savedDraft.name.trim());
+  if (age !== undefined) identityParts.push(fmt(age));
+  // Lowercase, deliberately — "male"/"female" is the raw Sex value and the
+  // identity line states it as a plain fact ("Ayhan · 22 · male"), not a
+  // chip label. GENDER, NOT SEX: this line and every other user-facing
+  // string say "Gender" — the DB column and every identifier in code stay
+  // `sex`, because Mifflin-St Jeor (6i) consumes biological sex, so the
+  // column should keep naming what the formula actually uses. See the
+  // Gender field label below for the same note.
+  if (savedDraft.sex !== undefined) identityParts.push(savedDraft.sex);
+  const identityText = identityParts.length > 0 ? identityParts.join(' · ') : 'Not set up';
+
+  const savedHeightCm =
+    savedDraft.heightFt !== undefined && savedDraft.heightIn !== undefined
+      ? cmFromFeetInches(savedDraft.heightFt, savedDraft.heightIn)
+      : undefined;
+  const hasHeight = savedHeightCm !== undefined;
+  const hasWeighIn = currentEntry !== undefined;
+  const hasDob = savedDob !== undefined;
+  const hasGender = savedDraft.sex !== undefined;
+
+  // BMI's gate: needs height AND a weigh-in. Height is named first because
+  // it is what is actually missing today (the profile table starts empty) —
+  // once it's added, this correctly pivots to naming the weigh-in instead of
+  // going on saying "Needs height" after that stops being true. Once BOTH
+  // are present, waitingText is undefined and GatedSection renders label +
+  // placeholder only — this section still can't compute a real number (no
+  // bmi.ts import this commit), and silence is the only honest state left
+  // to show until 6g wires the real one.
+  const bmiWaitingText = !hasHeight ? 'Needs height' : !hasWeighIn ? 'Needs a weigh-in' : undefined;
+  const bmiActionLabel = !hasHeight ? 'Add height ›' : undefined;
+
+  // Caloric maintenance's gate: needs height, DOB, gender AND a weigh-in —
+  // but the weigh-in isn't named in the text while Details is still what's
+  // missing, same as relative strength below, because its own fix is the
+  // Bodyweight CTA already on this same screen, not something "Add details
+  // ›" would open. Once every prerequisite is present, waitingText is
+  // undefined and this renders label + placeholder only, same silence-is-
+  // honest rule as BMI above.
+  const missingDetailParts: string[] = [];
+  if (!hasHeight) missingDetailParts.push('height');
+  if (!hasDob) missingDetailParts.push('date of birth');
+  if (!hasGender) missingDetailParts.push('gender');
+  const caloricWaitingText =
+    missingDetailParts.length > 0
+      ? `Needs ${joinWithAmpersand(missingDetailParts)}`
+      : !hasWeighIn
+        ? 'Needs a weigh-in'
+        : undefined;
+  const caloricActionLabel = missingDetailParts.length > 0 ? 'Add details ›' : undefined;
+
+  // Relative strength's gate: the live dev DB already has favourited
+  // exercises with real e1RM history (sets are logged), so a hardcoded
+  // "Nothing logged" would be factually wrong — the only thing actually
+  // missing, and the only thing this screen can check without importing
+  // relative-strength.ts / relative-strength-repo.ts, is a bodyweight. No
+  // action link either way: the fix, while missing, is the Bodyweight CTA
+  // already above; once satisfied, waitingText is undefined and this
+  // renders label + placeholder only, same as the other two gates.
+  const relativeStrengthWaitingText = !hasWeighIn ? 'Needs a weigh-in' : undefined;
+
+  // Details' collapsed one-line summary — every already-known fact, joined,
+  // so collapsing the section doesn't hide information the user already
+  // committed. Empty only on a genuine day-one profile.
+  const detailsSummaryParts: string[] = [];
+  if (hasName) detailsSummaryParts.push(savedDraft.name.trim());
+  if (savedDob !== undefined) detailsSummaryParts.push(formatFullDate(savedDob));
+  if (savedDraft.sex !== undefined) detailsSummaryParts.push(savedDraft.sex === 'male' ? 'Male' : 'Female');
+  if (savedHeightCm !== undefined) {
+    detailsSummaryParts.push(`${formatHeightImperial(savedHeightCm)} (${fmt(savedHeightCm)} cm)`);
+  }
+  if (savedDraft.goalWeightKg !== undefined) {
+    detailsSummaryParts.push(`Goal ${fmt(savedDraft.goalWeightKg)} kg`);
+  }
+  const detailsSummary = detailsSummaryParts.length > 0 ? detailsSummaryParts.join(' · ') : 'Add your details';
 
   async function handleLogWeight(weightKg: number) {
     setLogError(null);
@@ -402,204 +551,281 @@ export default function ProfileScreen() {
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.header}>
-          <Wordmark size={26} />
-          <Text style={styles.eyebrow}>Profile</Text>
-        </View>
         {/* No KeyboardAvoidingView here, deliberately not yet: the Name
-            TextInput sits at the top of a tall card with Save at the
-            bottom, so on a short screen the soft keyboard may cover Save.
-            Whether that actually overlaps depends on real screen height and
-            keyboard size, neither of which is knowable from here — flagged
-            as a device-check item for the 6j pass rather than pre-emptively
-            wrapped. */}
-        <ScrollView contentContainerStyle={styles.list}>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Bodyweight</Text>
-
-            {isBwLoading ? (
-              <ActivityIndicator color={Palette.textSecondary} style={styles.loading} />
-            ) : bwFetchError ? (
-              <Text style={styles.errorText}>
-                Could not load your bodyweight history. Check your connection and try again.
-              </Text>
-            ) : (
-              <>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Current weight</Text>
-                  <Text style={styles.bwCurrentValue}>
-                    {currentEntry !== undefined ? `${fmt(currentEntry.weightKg)} kg` : '—'}
-                  </Text>
-                  {goalDeltaText && <Text style={styles.readout}>{goalDeltaText}</Text>}
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <ValueChip
-                    label={todayEntry !== undefined ? "Update today's weight" : "Log today's weight"}
-                    value={todayEntry !== undefined ? fmt(todayEntry.weightKg) : ''}
-                    onPress={() => !isLogging && setActiveField('bodyWeight')}
-                  />
-                </View>
-
-                {/* Inline on-card error text, DELIBERATELY diverging from the
-                    four Summary cards' swallow-and-fallback-with-no-retry-UI
-                    pattern. That pattern is correct for READS, where a
-                    failure shows an empty state and the user retries by
-                    navigating away and back. A failed WRITE that silently
-                    does nothing is different in kind — the user believes a
-                    weigh-in was recorded, and only discovers otherwise weeks
-                    later as a hole in the history. A read/write asymmetry,
-                    not an inconsistency. */}
-                {logError && <Text style={styles.errorText}>{logError}</Text>}
-
-                {bwHistory.length > 0 && (
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>History</Text>
-                    {bwHistory.map(entry => (
-                      <View key={entry.date} style={styles.bwEntryRow}>
-                        <Text style={styles.bwEntryDate}>{formatFullDate(entry.date)}</Text>
-                        <Text style={styles.bwEntryWeight}>{fmt(entry.weightKg)} kg</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </>
+            TextInput sits at the top of Details' expanded rows with Save at
+            the bottom, so on a short screen the soft keyboard may cover
+            Save. Whether that actually overlaps depends on real screen
+            height and keyboard size, neither of which is knowable from here
+            — flagged as a device-check item for the 6j pass rather than
+            pre-emptively wrapped. */}
+        <ScrollView contentContainerStyle={styles.page}>
+          {/* HEADER — wordmark, then an identity line stating facts about
+              the person (name, age, gender), not a control. 16px here is a
+              real design decision, not an oversight: Track's wordmark is
+              30px and Summary's is 26px, so this will visibly change size
+              as the user tabs between screens. Ledger's own measurements
+              call for 16px, so that's what ships — flagged here rather than
+              silently shipped, for a judgement call on device. */}
+          <Wordmark size={16} />
+          <View style={styles.identityRow}>
+            <Text style={styles.identityText}>{identityText}</Text>
+            {!hasName && (
+              <Pressable onPress={() => setIsDetailsExpanded(true)}>
+                <Text style={styles.actionLink}>Add your name ›</Text>
+              </Pressable>
             )}
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Details</Text>
+          <View style={styles.hairline} />
 
-            {isLoading ? (
-              <ActivityIndicator color={Palette.textSecondary} style={styles.loading} />
-            ) : fetchError ? (
-              <Text style={styles.errorText}>
-                Could not load your profile. Check your connection and try again.
+          {/* BODYWEIGHT */}
+          {isBwLoading ? (
+            <ActivityIndicator color={Palette.textSecondary} style={styles.loading} />
+          ) : bwFetchError ? (
+            <Text style={styles.errorText}>
+              Could not load your bodyweight history. Check your connection and try again.
+            </Text>
+          ) : (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Bodyweight</Text>
+              <Text style={styles.heroValue}>
+                {currentEntry !== undefined ? `${fmt(currentEntry.weightKg)} kg` : '—'}
               </Text>
-            ) : (
-              <>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Name</Text>
-                  <TextInput
-                    value={draft.name}
-                    onChangeText={name => updateDraft({ name })}
-                    placeholder="Your name"
-                    placeholderTextColor={Palette.textMuted}
-                    style={styles.textInput}
-                  />
-                </View>
+              {goalDeltaText && <Text style={styles.readout}>{goalDeltaText}</Text>}
 
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Date of birth</Text>
-                  <View style={styles.chipRow}>
-                    <ValueChip
-                      label="Year"
-                      // Year carries the widest content (4 digits, e.g.
-                      // "2026") against Month/Day's 2, same ratio as the
-                      // logging screen's Kg chip against Reps/RPE — matching
-                      // its flex={1.5}/default split rather than inventing a
-                      // new one.
-                      flex={1.5}
-                      value={draft.dobYear !== undefined ? fmt(draft.dobYear) : ''}
-                      onPress={() => setActiveField('dobYear')}
-                    />
-                    <ValueChip
-                      label="Month"
-                      value={draft.dobMonth !== undefined ? fmt(draft.dobMonth) : ''}
-                      onPress={() => setActiveField('dobMonth')}
-                    />
-                    <ValueChip
-                      label="Day"
-                      value={draft.dobDay !== undefined ? fmt(draft.dobDay) : ''}
-                      onPress={() => setActiveField('dobDay')}
-                    />
-                  </View>
-                  <Text style={styles.readout}>
-                    {assembledDob
-                      ? formatFullDate(assembledDob)
-                      : isDobPartial
-                        ? 'Year, month, and day must all be set to save your date of birth.'
-                        : '—'}
-                  </Text>
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Sex</Text>
-                  {/* Sex is nullable in the DB, but this pass has no "unset"
-                      affordance — tapping the already-selected chip again is
-                      a no-op re-set to the same value, not a clear. */}
-                  <View style={styles.chipRow}>
-                    <Pressable
-                      onPress={() => updateDraft({ sex: 'male' })}
-                      style={[styles.sexChip, draft.sex === 'male' && styles.sexChipSelected]}
-                    >
-                      <Text style={[styles.sexChipLabel, draft.sex === 'male' && styles.sexChipLabelSelected]}>
-                        Male
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => updateDraft({ sex: 'female' })}
-                      style={[styles.sexChip, draft.sex === 'female' && styles.sexChipSelected]}
-                    >
-                      <Text style={[styles.sexChipLabel, draft.sex === 'female' && styles.sexChipLabelSelected]}>
-                        Female
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Height</Text>
-                  <View style={styles.chipRow}>
-                    <ValueChip
-                      label="Ft"
-                      value={draft.heightFt !== undefined ? fmt(draft.heightFt) : ''}
-                      onPress={() => setActiveField('heightFt')}
-                    />
-                    <ValueChip
-                      label="In"
-                      value={draft.heightIn !== undefined ? fmt(draft.heightIn) : ''}
-                      onPress={() => setActiveField('heightIn')}
-                    />
-                  </View>
-                  <Text style={styles.readout}>
-                    {derivedHeightCm !== undefined
-                      ? `${formatHeightImperial(derivedHeightCm)} (${fmt(derivedHeightCm)} cm)`
-                      : isHeightPartial
-                        ? 'Both feet and inches must be set to save your height.'
-                        : '—'}
-                  </Text>
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Goal weight</Text>
-                  <ValueChip
-                    label="Kg"
-                    value={draft.goalWeightKg !== undefined ? fmt(draft.goalWeightKg) : ''}
-                    onPress={() => setActiveField('goalWeight')}
-                  />
-                </View>
-
-                {saveError && <Text style={styles.errorText}>{saveError}</Text>}
-
-                <Pressable
-                  onPress={handleSave}
-                  disabled={!isDirty || isSaving}
-                  style={({ pressed }) => [
-                    styles.saveButton,
-                    (!isDirty || isSaving) && styles.saveButtonDisabled,
-                    pressed && isDirty && !isSaving && styles.saveButtonPressed,
+              <Pressable
+                onPress={() => !isLogging && setActiveField('bodyWeight')}
+                style={({ pressed }) => [
+                  styles.weighInCta,
+                  todayEntry !== undefined ? styles.weighInCtaOutlined : styles.weighInCtaFilled,
+                  pressed &&
+                    (todayEntry !== undefined ? styles.weighInCtaOutlinedPressed : styles.weighInCtaFilledPressed),
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.weighInCtaLabel,
+                    todayEntry !== undefined ? styles.weighInCtaLabelOutlined : styles.weighInCtaLabelFilled,
                   ]}
                 >
-                  <Text
-                    style={[styles.saveButtonLabel, (!isDirty || isSaving) && styles.saveButtonLabelDisabled]}
-                  >
-                    {isSaving ? 'Saving…' : 'Save'}
+                  {todayEntry !== undefined ? "Update today's entry" : "Log today's weight"}
+                </Text>
+              </Pressable>
+
+              {/* Inline on-section error text, DELIBERATELY diverging from
+                  the four Summary cards' swallow-and-fallback-with-no-retry-UI
+                  pattern. That pattern is correct for READS, where a
+                  failure shows an empty state and the user retries by
+                  navigating away and back. A failed WRITE that silently
+                  does nothing is different in kind — the user believes a
+                  weigh-in was recorded, and only discovers otherwise weeks
+                  later as a hole in the history. A read/write asymmetry,
+                  not an inconsistency. */}
+              {logError && <Text style={styles.errorText}>{logError}</Text>}
+
+              {bwHistory.length > 0 && (
+                <View style={styles.recentList}>
+                  {withChanges(bwHistory).map(entry => (
+                    <View key={entry.date} style={styles.recentRow}>
+                      <Text style={styles.recentDate}>
+                        {entry.date === todayLocalDate() ? 'Today' : formatFullDate(entry.date)}
+                      </Text>
+                      <Text style={styles.recentKg}>{fmt(entry.weightKg)} kg</Text>
+                      <Text style={styles.recentChange}>{formatChangeKg(entry.changeKg)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          <View style={styles.hairline} />
+
+          {/* BODY MASS INDEX — gated only this commit. See gated-section.tsx
+              for why this is a real shipping state, not scaffolding. */}
+          <GatedSection
+            label="Body mass index"
+            placeholder="––.–"
+            waitingText={bmiWaitingText}
+            actionLabel={bmiActionLabel}
+            onPressAction={bmiActionLabel !== undefined ? () => openDetailsField('heightFt') : undefined}
+          />
+
+          <View style={styles.hairline} />
+
+          {/* RELATIVE STRENGTH — gated only this commit. See the
+              relativeStrengthWaitingText comment above for why this is
+              dynamic rather than a hardcoded "Nothing logged". */}
+          <GatedSection label="Relative strength" placeholder="–.––×" waitingText={relativeStrengthWaitingText} />
+
+          <View style={styles.hairline} />
+
+          {/* CALORIC MAINTENANCE — gated only this commit. */}
+          <GatedSection
+            label="Caloric maintenance"
+            placeholder="–––– kcal"
+            waitingText={caloricWaitingText}
+            actionLabel={caloricActionLabel}
+            onPressAction={caloricActionLabel !== undefined ? () => setIsDetailsExpanded(true) : undefined}
+          />
+
+          <View style={styles.hairline} />
+
+          {/* DETAILS — collapsed by default; the summary row above IS the
+              toggle. */}
+          {isLoading ? (
+            <ActivityIndicator color={Palette.textSecondary} style={styles.loading} />
+          ) : fetchError ? (
+            <Text style={styles.errorText}>Could not load your profile. Check your connection and try again.</Text>
+          ) : (
+            <View style={styles.section}>
+              <Pressable onPress={toggleDetailsExpanded} style={styles.detailsSummaryRow}>
+                <Text style={styles.sectionLabel}>Details</Text>
+                <View style={styles.detailsSummaryLine}>
+                  <Text style={styles.detailsSummaryText} numberOfLines={isDetailsExpanded ? undefined : 1}>
+                    {detailsSummary}
                   </Text>
-                </Pressable>
-              </>
-            )}
-          </View>
+                  {/* Own Text sibling, not appended inside detailsSummaryText
+                      — that Text has numberOfLines={1} while collapsed, and a
+                      long summary would truncate the chevron away with it,
+                      eating the only visual cue this row is tappable. */}
+                  <Text style={styles.detailsSummaryChevron}>{isDetailsExpanded ? '⌄' : '›'}</Text>
+                </View>
+                {isDetailsExpanded && isDirty && (
+                  <Text style={styles.readout}>You have unsaved changes — save before collapsing.</Text>
+                )}
+              </Pressable>
+
+              {isDetailsExpanded && (
+                <>
+                  <View style={styles.detailsRow}>
+                    <Text style={styles.fieldLabel}>Name</Text>
+                    <TextInput
+                      value={draft.name}
+                      onChangeText={name => updateDraft({ name })}
+                      placeholder="Your name"
+                      placeholderTextColor={Palette.textMuted}
+                      style={styles.textInput}
+                    />
+                  </View>
+
+                  <View style={styles.detailsRow}>
+                    <Text style={styles.fieldLabel}>Date of birth</Text>
+                    <View style={styles.chipRow}>
+                      <ValueChip
+                        label="Year"
+                        // Year carries the widest content (4 digits, e.g.
+                        // "2026") against Month/Day's 2, same ratio as the
+                        // logging screen's Kg chip against Reps/RPE — matching
+                        // its flex={1.5}/default split rather than inventing a
+                        // new one.
+                        flex={1.5}
+                        value={draft.dobYear !== undefined ? fmt(draft.dobYear) : ''}
+                        onPress={() => setActiveField('dobYear')}
+                      />
+                      <ValueChip
+                        label="Month"
+                        value={draft.dobMonth !== undefined ? fmt(draft.dobMonth) : ''}
+                        onPress={() => setActiveField('dobMonth')}
+                      />
+                      <ValueChip
+                        label="Day"
+                        value={draft.dobDay !== undefined ? fmt(draft.dobDay) : ''}
+                        onPress={() => setActiveField('dobDay')}
+                      />
+                    </View>
+                    <Text style={styles.readout}>
+                      {assembledDob
+                        ? formatFullDate(assembledDob)
+                        : isDobPartial
+                          ? 'Year, month, and day must all be set to save your date of birth.'
+                          : '—'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detailsRow}>
+                    {/* GENDER, NOT SEX: every user-facing string here says
+                        "Gender". The DB column and every identifier in code
+                        stay `sex` — Mifflin-St Jeor (6i) consumes biological
+                        sex, so the column should keep naming what the
+                        formula actually uses, and renaming it would need a
+                        migration for nothing. This divergence is
+                        deliberate, not drift. */}
+                    <Text style={styles.fieldLabel}>Gender</Text>
+                    {/* Sex is nullable in the DB, but this pass has no "unset"
+                        affordance — tapping the already-selected chip again is
+                        a no-op re-set to the same value, not a clear. */}
+                    <View style={styles.chipRow}>
+                      <Pressable
+                        onPress={() => updateDraft({ sex: 'male' })}
+                        style={[styles.sexChip, draft.sex === 'male' && styles.sexChipSelected]}
+                      >
+                        <Text style={[styles.sexChipLabel, draft.sex === 'male' && styles.sexChipLabelSelected]}>
+                          Male
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => updateDraft({ sex: 'female' })}
+                        style={[styles.sexChip, draft.sex === 'female' && styles.sexChipSelected]}
+                      >
+                        <Text style={[styles.sexChipLabel, draft.sex === 'female' && styles.sexChipLabelSelected]}>
+                          Female
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <View style={styles.detailsRow}>
+                    <Text style={styles.fieldLabel}>Height</Text>
+                    <View style={styles.chipRow}>
+                      <ValueChip
+                        label="Ft"
+                        value={draft.heightFt !== undefined ? fmt(draft.heightFt) : ''}
+                        onPress={() => setActiveField('heightFt')}
+                      />
+                      <ValueChip
+                        label="In"
+                        value={draft.heightIn !== undefined ? fmt(draft.heightIn) : ''}
+                        onPress={() => setActiveField('heightIn')}
+                      />
+                    </View>
+                    <Text style={styles.readout}>
+                      {derivedHeightCm !== undefined
+                        ? `${formatHeightImperial(derivedHeightCm)} (${fmt(derivedHeightCm)} cm)`
+                        : isHeightPartial
+                          ? 'Both feet and inches must be set to save your height.'
+                          : '—'}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.detailsRow, styles.detailsRowLast]}>
+                    <Text style={styles.fieldLabel}>Goal weight</Text>
+                    <ValueChip
+                      label="Kg"
+                      value={draft.goalWeightKg !== undefined ? fmt(draft.goalWeightKg) : ''}
+                      onPress={() => setActiveField('goalWeight')}
+                    />
+                  </View>
+
+                  {saveError && <Text style={styles.errorText}>{saveError}</Text>}
+
+                  <Pressable
+                    onPress={handleSave}
+                    disabled={!isDirty || isSaving}
+                    style={({ pressed }) => [
+                      styles.saveButton,
+                      (!isDirty || isSaving) && styles.saveButtonDisabled,
+                      pressed && isDirty && !isSaving && styles.saveButtonPressed,
+                    ]}
+                  >
+                    <Text style={[styles.saveButtonLabel, (!isDirty || isSaving) && styles.saveButtonLabelDisabled]}>
+                      {isSaving ? 'Saving…' : 'Save'}
+                    </Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
 
@@ -711,27 +937,99 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.background },
   safeArea: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 4 },
-  eyebrow: {
-    fontFamily: Typefaces.numeralMedium,
-    fontSize: 14,
-    letterSpacing: 2,
-    color: Palette.textMuted,
+  // 30 / 22 / 44 — the Ledger mockup's own outer padding at its 390px
+  // reference width. These are web px from a 390px mockup; RN dp maps 1:1
+  // at this width, so they're used directly rather than re-derived.
+  page: { paddingTop: 30, paddingHorizontal: 22, paddingBottom: 44 },
+  identityRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 10, marginBottom: 26 },
+  identityText: { fontFamily: Typefaces.uiSemiBold, fontSize: 22, color: Palette.text },
+  actionLink: { fontFamily: Typefaces.uiSemiBold, fontSize: 13, color: Palette.brand },
+  // The one hairline treatment, reused between every section: 1px,
+  // rgba(138,143,148,0.16), 26px vertical margin — the Ledger's own section
+  // divider, verbatim.
+  hairline: { height: 1, backgroundColor: 'rgba(138,143,148,0.16)', marginVertical: 26 },
+  section: { gap: 10 },
+  sectionLabel: {
+    fontFamily: Typefaces.uiSemiBold,
+    fontSize: 11,
+    // 0.14em of an 11px face, same em-to-point approximation already used
+    // for this label elsewhere (see gated-section.tsx).
+    letterSpacing: 1.5,
+    color: Palette.textSecondary,
     textTransform: 'uppercase',
-    marginTop: 9,
   },
-  list: { gap: 16, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
-  card: {
-    backgroundColor: Palette.surface,
-    borderWidth: 1,
-    borderColor: Palette.border,
-    borderRadius: 14,
-    padding: 18,
-    gap: 20,
-  },
-  cardTitle: { fontFamily: Typefaces.uiBold, fontSize: 16, color: Palette.text },
   loading: { paddingVertical: 32 },
-  fieldGroup: { gap: 8 },
+  readout: { fontFamily: Typefaces.uiRegular, fontSize: 14, color: Palette.textSecondary },
+  errorText: { fontFamily: Typefaces.uiRegular, fontSize: 13, color: Palette.textSecondary },
+  heroValue: {
+    fontFamily: Typefaces.numeralBold,
+    fontSize: 52,
+    lineHeight: 56,
+    color: Palette.text,
+    fontVariant: ['tabular-nums'],
+  },
+  // Two states, per the Ledger spec: OUTLINED once a weigh-in already
+  // exists today ("Update today's entry"), FILLED on day one ("Log today's
+  // weight") — a filled CTA reads as more urgent, which is right exactly
+  // once, before anything has been logged at all.
+  weighInCta: { alignSelf: 'flex-start', borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  weighInCtaOutlined: {
+    borderWidth: 1,
+    borderColor: Palette.brand,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    minHeight: 44,
+  },
+  weighInCtaOutlinedPressed: { backgroundColor: Palette.surface },
+  weighInCtaFilled: {
+    backgroundColor: Palette.brand,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    minHeight: 48,
+  },
+  weighInCtaFilledPressed: { backgroundColor: Palette.brandPressed },
+  weighInCtaLabel: { fontFamily: Typefaces.uiSemiBold, fontSize: 13 },
+  weighInCtaLabelOutlined: { color: Palette.brand },
+  weighInCtaLabelFilled: { color: Palette.background },
+  recentList: { gap: 6 },
+  recentRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
+  recentDate: { flex: 1, fontFamily: Typefaces.uiRegular, fontSize: 13, color: Palette.textSecondary },
+  recentKg: {
+    fontFamily: Typefaces.numeralMedium,
+    fontSize: 13,
+    color: Palette.text,
+    fontVariant: ['tabular-nums'],
+  },
+  // Chalk, not red/green — see formatChangeKg's comment for why a delta
+  // never earns its own colour here.
+  recentChange: {
+    fontFamily: Typefaces.numeralMedium,
+    fontSize: 13,
+    color: Palette.textSecondary,
+    fontVariant: ['tabular-nums'],
+    minWidth: 40,
+    textAlign: 'right',
+  },
+  detailsSummaryRow: { gap: 4 },
+  detailsSummaryLine: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  // flex: 1 so numberOfLines={1}'s truncation has a bounded width to
+  // truncate WITHIN — leaving the chevron sibling (fixed size, no flex)
+  // room outside that boundary instead of getting truncated along with it.
+  detailsSummaryText: { flex: 1, fontFamily: Typefaces.uiRegular, fontSize: 13, color: Palette.text },
+  detailsSummaryChevron: { fontFamily: Typefaces.uiRegular, fontSize: 13, color: Palette.text },
+  // Details rows: 12px vertical padding, 44 min-height, a fainter hairline
+  // (rgba(138,143,148,0.1), lower alpha than the section divider above) —
+  // the Ledger's own "Details" row treatment, applied to each field's
+  // editing group rather than to a static label/value line, since these
+  // rows hold real controls (chips, wheels, a text input) instead.
+  detailsRow: {
+    gap: 8,
+    paddingVertical: 12,
+    minHeight: 44,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(138,143,148,0.1)',
+  },
+  detailsRowLast: { borderBottomWidth: 0 },
   fieldLabel: {
     fontFamily: Typefaces.uiSemiBold,
     fontSize: 11,
@@ -739,26 +1037,10 @@ const styles = StyleSheet.create({
     color: Palette.textMuted,
     textTransform: 'uppercase',
   },
-  readout: { fontFamily: Typefaces.uiRegular, fontSize: 14, color: Palette.textSecondary },
   chipRow: { flexDirection: 'row', gap: 10 },
-  bwCurrentValue: {
-    fontFamily: Typefaces.numeralBold,
-    fontSize: 40,
-    lineHeight: 44,
-    color: Palette.text,
-    fontVariant: ['tabular-nums'],
-  },
-  bwEntryRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  bwEntryDate: { fontFamily: Typefaces.uiRegular, fontSize: 14, color: Palette.textSecondary },
-  bwEntryWeight: {
-    fontFamily: Typefaces.numeralMedium,
-    fontSize: 14,
-    color: Palette.text,
-    fontVariant: ['tabular-nums'],
-  },
   textInput: {
     minHeight: MinTouchTarget,
-    backgroundColor: Palette.background,
+    backgroundColor: Palette.surface,
     borderWidth: 1,
     borderColor: Palette.border,
     borderRadius: 12,
@@ -773,14 +1055,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Palette.border,
-    backgroundColor: Palette.background,
+    backgroundColor: Palette.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sexChipSelected: { backgroundColor: Palette.brand, borderColor: Palette.brand },
   sexChipLabel: { fontFamily: Typefaces.uiSemiBold, fontSize: 15, color: Palette.textSecondary },
   sexChipLabelSelected: { color: Palette.text },
-  errorText: { fontFamily: Typefaces.uiRegular, fontSize: 13, color: Palette.textSecondary },
   saveButton: {
     minHeight: MinTouchTarget,
     borderRadius: 24,

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BmiSection } from '@/components/profile/bmi-section';
 import { GatedSection } from '@/components/profile/gated-section';
+import { RelativeStrengthSection } from '@/components/profile/relative-strength-section';
 import { WeightPickerModal } from '@/components/profile/weight-picker-modal';
 import { ValueChip } from '@/components/track/value-chip';
 import { WheelPickerModal } from '@/components/track/wheel-picker-modal';
@@ -12,6 +13,7 @@ import { Wordmark } from '@/components/wordmark';
 import { MinTouchTarget, Palette, Typefaces } from '@/constants/theme';
 import { getBodyweightHistory, logBodyweight } from '@/lib/bodyweight-repo';
 import { getProfile, saveProfile } from '@/lib/profile-repo';
+import { getFavouriteBests, type FavouriteBest } from '@/lib/relative-strength-repo';
 import type { BodyweightEntry, Profile, ProfileFields, Sex } from '@/types/profile';
 import { calculateAge, daysInMonth } from '@/utils/age';
 import { formatFullDate } from '@/utils/date-display';
@@ -196,6 +198,14 @@ export default function ProfileScreen() {
   const [bwFetchError, setBwFetchError] = useState(false);
   const hasLoadedBwOnceRef = useRef(false);
 
+  // A THIRD copy of the same three-flag shape, for the same reason the first
+  // two are separate: a favourite-bests fetch failure must never blank the
+  // profile form or the bodyweight section, and vice versa.
+  const [lifts, setLifts] = useState<FavouriteBest[]>([]);
+  const [isLiftsLoading, setIsLiftsLoading] = useState(true);
+  const [liftsLoadFailed, setLiftsLoadFailed] = useState(false);
+  const hasLoadedLiftsOnceRef = useRef(false);
+
   // Set only on a failed logBodyweight write, so the wheel reopens where the
   // user left off instead of making them re-scroll to the value that didn't
   // save. Cleared on the next successful write.
@@ -247,6 +257,27 @@ export default function ProfileScreen() {
       }
     } finally {
       if (!isCancelled()) setIsBwLoading(false);
+    }
+  }, []);
+
+  // Same independent-chain shape as loadBodyweight above, for the same
+  // reason: fired alongside it in the focus effect below, NOT under
+  // Promise.all, so a favourite-bests failure can't touch bodyweight's (or
+  // the profile form's) loading/error state and vice versa.
+  const loadFavouriteBests = useCallback(async (isCancelled: () => boolean = () => false) => {
+    try {
+      const result = await getFavouriteBests();
+      if (isCancelled()) return;
+      setLifts(result);
+      setLiftsLoadFailed(false);
+      hasLoadedLiftsOnceRef.current = true;
+    } catch {
+      if (isCancelled()) return;
+      if (!hasLoadedLiftsOnceRef.current) {
+        setLiftsLoadFailed(true);
+      }
+    } finally {
+      if (!isCancelled()) setIsLiftsLoading(false);
     }
   }, []);
 
@@ -303,10 +334,14 @@ export default function ProfileScreen() {
       // the profile form's loading/error state and vice versa.
       loadBodyweight(() => cancelled);
 
+      // Same reasoning, third independent chain: a favourite-bests failure
+      // can't touch either of the other two's loading/error state.
+      loadFavouriteBests(() => cancelled);
+
       return () => {
         cancelled = true;
       };
-    }, [loadBodyweight]),
+    }, [loadBodyweight, loadFavouriteBests]),
   );
 
   function updateDraft(patch: Partial<Draft>) {
@@ -465,14 +500,9 @@ export default function ProfileScreen() {
         : undefined;
   const caloricActionLabel = missingDetailParts.length > 0 ? 'Add details ›' : undefined;
 
-  // Relative strength's gate: the live dev DB already has favourited
-  // exercises with real e1RM history (sets are logged), so a hardcoded
-  // "Nothing logged" would be factually wrong — the only thing actually
-  // missing, and the only thing this screen can check without importing
-  // relative-strength.ts / relative-strength-repo.ts, is a bodyweight. No
-  // action link either way: the fix, while missing, is the Bodyweight CTA
-  // already above; once satisfied, waitingText is undefined and this
-  // renders label + placeholder only, same as the other two gates.
+  // Relative strength's gate: needs a weigh-in, same as BMI's own gate.
+  // Once one exists, the real section renders instead (see below) — this
+  // text is only ever shown while hasWeighIn is false, so it stays true.
   const relativeStrengthWaitingText = !hasWeighIn ? 'Needs a weigh-in' : undefined;
 
   // Details' collapsed one-line summary — every already-known fact, joined,
@@ -658,10 +688,25 @@ export default function ProfileScreen() {
 
           <View style={styles.hairline} />
 
-          {/* RELATIVE STRENGTH — gated only this commit. See the
-              relativeStrengthWaitingText comment above for why this is
-              dynamic rather than a hardcoded "Nothing logged". */}
-          <GatedSection label="Relative strength" placeholder="–.––×" waitingText={relativeStrengthWaitingText} />
+          {/* RELATIVE STRENGTH — real card once a weigh-in exists AND the
+              favourite-bests fetch has resolved. If a weigh-in exists but
+              lifts are still loading, the gate renders silently (no
+              waitingText) rather than claim "Needs a weigh-in" when that's
+              no longer true, or flash the section's own empty-state claim
+              before the real data is back. */}
+          {currentEntry !== undefined && !isLiftsLoading ? (
+            <RelativeStrengthSection
+              lifts={lifts}
+              bodyweightKg={currentEntry.weightKg}
+              loadFailed={liftsLoadFailed}
+            />
+          ) : (
+            <GatedSection
+              label="Relative strength"
+              placeholder="–.––×"
+              waitingText={relativeStrengthWaitingText}
+            />
+          )}
 
           <View style={styles.hairline} />
 

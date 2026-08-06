@@ -941,7 +941,14 @@ const styles = StyleSheet.create({
   // reference width. These are web px from a 390px mockup; RN dp maps 1:1
   // at this width, so they're used directly rather than re-derived.
   page: { paddingTop: 30, paddingHorizontal: 22, paddingBottom: 44 },
-  identityRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 10, marginBottom: 26 },
+  // No marginBottom here — the hairline immediately below owns ALL spacing
+  // between sections. Yoga does NOT collapse adjacent margins the way CSS
+  // does, so a marginBottom here plus the hairline's own marginVertical
+  // would SUM (26 + 26 = 52) rather than merge into one 26px gap, making the
+  // identity-line/Bodyweight junction visually double every other divider's
+  // gap. Every other section boundary is already correct because no other
+  // section view carries its own margin — this is the one place that did.
+  identityRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 10 },
   identityText: { fontFamily: Typefaces.uiSemiBold, fontSize: 22, color: Palette.text },
   actionLink: { fontFamily: Typefaces.uiSemiBold, fontSize: 13, color: Palette.brand },
   // The one hairline treatment, reused between every section: 1px,

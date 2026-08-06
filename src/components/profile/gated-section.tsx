@@ -56,6 +56,9 @@ export function GatedSection({ label, placeholder, waitingText, actionLabel, onP
 
 const styles = StyleSheet.create({
   section: { gap: 10 },
+  // Exported below as `sectionLabelStyle` — bmi-section.tsx shares this
+  // instead of forking a third copy (gated-section.tsx and profile.tsx
+  // already each have their own).
   label: {
     fontFamily: Typefaces.uiSemiBold,
     fontSize: 11,
@@ -75,3 +78,7 @@ const styles = StyleSheet.create({
   waitingText: { fontFamily: Typefaces.uiRegular, fontSize: 13, color: Palette.textSecondary },
   actionLink: { fontFamily: Typefaces.uiSemiBold, fontSize: 13, color: Palette.brand },
 });
+
+// Shared with bmi-section.tsx so the two sections' labels are guaranteed
+// identical rather than independently maintained.
+export const sectionLabelStyle = styles.label;

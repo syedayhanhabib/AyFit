@@ -570,6 +570,15 @@ the bar:
 Scale spans **15–40 linearly**; the marker clamps at either end with an
 off-scale indicator rather than the bar rescaling.
 
+The band and its two boundary ticks sit at **14% and 40%, not 18.5 and
+24.9 — the bar is continuous geometry, 24.9 is a display convention that
+belongs in the text.** Those are the true WHO cutoffs (18.5, 25.0) mapped
+onto the 15–40 scale; tinting the band to 24.9 instead would leave a
+visible sliver of the wrong colour at typical widths, which is worse than
+the number/geometry gap it would be avoiding. Ticks are boundary-only —
+two, not one per WHO band edge — since the bar's job is shape, not a
+seven-way label.
+
 *2. Colour.* The normal-range band uses the new `#2E5D45` reference-range
 token (see Design tokens above for why it is not Legs green). Marker is brand
 purple; everything else on the bar stays chalk/border neutral. That is **2

@@ -38,7 +38,7 @@ export const GLOSSARY: Record<GlossaryTermKey, GlossaryEntry> = {
   bmi: {
     title: 'BMI',
     description:
-      "Body Mass Index — weight relative to height squared, with no body-composition term. It can't tell muscle from fat, so a muscular lifter often reads high: a 178cm, 95kg lifter is BMI 30.0, not obese. It's a population screening tool, not an individual diagnosis. WHO publishes lower cutoffs for Asian and South Asian populations (overweight from 23.0, obese from 27.5), since cardiometabolic risk rises at a lower BMI in those groups — this app shows the standard cutoffs.",
+      "Body Mass Index — your weight divided by your height squared. It's a population-level screening ratio, not a measure of body composition: it has no term for muscle, so it can't tell lean mass from fat mass. That's why trained lifters routinely read overweight or higher while carrying low body fat — a 178cm, 95kg lifter comes out at 30.0. Standard WHO cutoffs are used here. Some health bodies apply lower thresholds for people of South Asian, Chinese and other Asian descent — overweight from 23.0, obese from 27.5 — because cardiometabolic risk rises at a lower BMI in those populations.",
   },
   tdee: {
     title: 'TDEE',

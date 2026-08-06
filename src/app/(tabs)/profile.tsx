@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BmiSection } from '@/components/profile/bmi-section';
 import { GatedSection } from '@/components/profile/gated-section';
 import { WeightPickerModal } from '@/components/profile/weight-picker-modal';
 import { ValueChip } from '@/components/track/value-chip';
@@ -641,15 +642,19 @@ export default function ProfileScreen() {
 
           <View style={styles.hairline} />
 
-          {/* BODY MASS INDEX — gated only this commit. See gated-section.tsx
-              for why this is a real shipping state, not scaffolding. */}
-          <GatedSection
-            label="Body mass index"
-            placeholder="––.–"
-            waitingText={bmiWaitingText}
-            actionLabel={bmiActionLabel}
-            onPressAction={bmiActionLabel !== undefined ? () => openDetailsField('heightFt') : undefined}
-          />
+          {/* BODY MASS INDEX — real card once height AND a weigh-in are both
+              on file; gated (see gated-section.tsx) until then. */}
+          {savedHeightCm !== undefined && currentEntry !== undefined ? (
+            <BmiSection heightCm={savedHeightCm} weightKg={currentEntry.weightKg} dateOfBirth={savedDob} />
+          ) : (
+            <GatedSection
+              label="Body mass index"
+              placeholder="––.–"
+              waitingText={bmiWaitingText}
+              actionLabel={bmiActionLabel}
+              onPressAction={bmiActionLabel !== undefined ? () => openDetailsField('heightFt') : undefined}
+            />
+          )}
 
           <View style={styles.hairline} />
 

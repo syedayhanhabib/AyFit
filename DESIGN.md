@@ -131,14 +131,28 @@ Two roles, doing two different jobs:
   Used for everything else: labels, nav, InfoTip copy, body text. Quiet,
   gets out of the way.
 
-Suggested scale (size/line-height):
+Scale (size/line-height) — **descriptive of what shipped, not suggested.**
+The table below was proposed before Profile existed, and had no token for a
+hero numeral, a gated-section placeholder, or a section label. Profile's
+sections (`profile.tsx`, `bmi-section.tsx`, `relative-strength-section.tsx`,
+`caloric-maintenance-section.tsx`, `gated-section.tsx`) shipped exactly
+those three sizes, consistently, across every section that needed them —
+so they're recorded below as real tokens (Numeral-hero, Numeral-gated,
+Section-label) rather than left undocumented. The original four rows
+(Numeral-lg, Numeral-sm, H1, Body) are unchanged and were not re-verified
+here — this pass only grepped Profile, so it says nothing about whether
+Track or Summary still match them. Do not change code to match a stale
+table:
 | Token | Size/LH | Face | Use |
 |---|---|---|---|
 | Numeral-lg | 40/44, tabular | Numeral | e1RM headline, PR number |
+| Numeral-hero | 52/56, tabular | Numeral | Profile's current-weight, BMI and TDEE headline numbers — shipped well above Numeral-lg |
 | Numeral-sm | 20/24, tabular | Numeral | Per-set weight × reps |
+| Numeral-gated | 30/34, tabular | Numeral | Profile's unwired-section placeholder (`gated-section.tsx`) |
 | H1 | 24/32 | UI | Screen titles |
+| Section-label | 11, uppercase, 1.5 letter-spacing | UI | Profile's section labels (`sectionLabel`/`fieldLabel`/`sectionLabelStyle`) — no token previously existed for this at all |
 | Body | 16/24 | UI | Labels, InfoTip text |
-| Caption | 13/18 | UI | Timestamps, secondary metadata |
+| Caption | 13/18 | UI | Timestamps, secondary metadata — most of Profile's body-ish text (readouts, captions, gate copy) shipped at 13, below Body, not at 16 |
 
 ### Layout & spacing
 
@@ -510,6 +524,22 @@ Profile is also **the first screen outside Track that writes** (a
 model note on why `.upsert()` is unusable for either), which puts it in scope
 for the offline queue story.
 
+**What actually shipped: "The Ledger."** The original card-stack Profile was
+built, seen on a real device, and REJECTED — it read as a data-entry form,
+roughly 80% inputs. A Claude Design pass produced three directions; "The
+Ledger" was chosen and shipped in `5de9dd7`. It is a flowing document, not
+cards: hairline dividers (1px, `rgba(138,143,148,0.16)`, 26px vertical margin)
+separate sections, and there are no elevated surfaces anywhere on the screen
+except the weigh-in CTA. Every section shares one label treatment
+(`gated-section.tsx`'s `sectionLabelStyle`, imported by all three computed
+sections rather than copied per file). A section with all its inputs present
+but not yet built renders label + placeholder ONLY, no explanatory text —
+silence, because any "needs X" copy would be false at that point. That state
+is now moot since all three gating sections are fully built (Profile has
+four sections total; the fourth, bodyweight, never gates — see the
+correction below), but the rule governed the
+whole phase.
+
 **What it holds, and why each field earns its place.** CLAUDE.md's original
 Profile line is *bodyweight tracking ONLY if something consumes it. Don't
 store unused data.* Applied to all six:
@@ -527,6 +557,13 @@ store unused data.* Applied to all six:
 actual argument for building the calorie estimate: not a bolt-on, but what
 makes two of the six fields legitimate.
 
+**Gender vs. sex, deliberately.** Every user-facing string on Profile says
+"Gender" — the field label, the identity line. The database column and every
+identifier in code stay `sex`, because Mifflin-St Jeor consumes biological
+sex, not gender identity, so the column should keep naming what the formula
+actually uses. This is a deliberate divergence, not an inconsistency to tidy
+up later.
+
 **Bodyweight is a time series, not a field.** `bodyweight_log (date,
 weight_kg)`, one canonical weigh-in per LOCAL date; "current weight" is the
 latest row, computed. Same reasoning as e1RM, Volume and PRs being
@@ -536,12 +573,24 @@ becomes impossible retroactively and permanently. Landed in `2eb5f5b`. `date`
 is written via `todayLocalDate()`, never derived from a `timestamptz`'s UTC
 face.
 
-**Inputs reuse Track's components as-is.** Weight, height and DOB go on
-`ValueChip` + `WheelPickerModal` (`src/components/track/`). Sex is a
-two-option chip pair. Name is the screen's only free-text field. Those two
-components are not guardrailed, but the guardrailed logging screen consumes
-them — so Profile uses them UNMODIFIED. If Profile needs different behaviour,
-that is a new component, not an edit.
+**`ValueChip` + `WheelPickerModal` are reused unmodified; bodyweight is not.**
+Height and DOB go on `ValueChip` + `WheelPickerModal` (`src/components/track/`)
+exactly as they ship for Track — those two components are not guardrailed, but
+the guardrailed logging screen consumes them, so Profile uses them UNMODIFIED
+rather than edit them. Sex is a two-option chip pair. Name is the screen's only
+free-text field. Bodyweight entry (current weight and goal weight) is
+different: it needed a two-wheel 0.1kg picker (whole kg + tenths, `f80d05a`)
+that Track's single-wheel `WheelPickerModal` doesn't do, so it got its own
+component, `src/components/profile/weight-picker-modal.tsx`. This section
+originally read "Inputs reuse Track's components as-is" — that did not
+survive contact with what bodyweight entry actually needed. If Profile
+needs different behaviour, that is a new component, not an edit — the rule
+still held, it just produced a new component here instead of zero. **Known
+cost, not free:** `weight-picker-modal.tsx` duplicates `wheel-picker-modal.tsx`'s
+snap-scroll mechanics (ScrollView + snapToInterval + scroll-position sync,
+seeded via `useLayoutEffect`) wholesale, forced by the guardrail rather than
+chosen — consolidate the two into one shared wheel-column primitive once the
+guardrail lifts.
 
 - **Height enters as ft + in, stores as cm.** Display-only conversion,
   contained to the input. Nobody here knows their height in centimetres.
@@ -578,6 +627,16 @@ visible sliver of the wrong colour at typical widths, which is worse than
 the number/geometry gap it would be avoiding. Ticks are boundary-only —
 two, not one per WHO band edge — since the bar's job is shape, not a
 seven-way label.
+
+**BMI categorises from the 1dp-rounded value, not the raw computed one** —
+and the reason is not presentational. `src/utils/bmi.ts`'s own comment gives
+the stronger reason: the WHO bands have literal GAPS at continuous values
+(16.95 falls in neither 16.0–16.9 nor 17.0–18.4), and rounding to 1dp first
+closes those gaps exactly. A secondary consequence is that the displayed
+number and the category label can never contradict each other. This is also
+why "24.9" appears nowhere in the codebase — the category ladder bands on
+`< 25.0`, the true cutoff, same as the bar geometry above — so "24.9" lives
+only as prose in this document, never as a literal in code.
 
 *2. Colour.* The normal-range band uses the new `#2E5D45` reference-range
 token (see Design tokens above for why it is not Legs green). Marker is brand
@@ -636,12 +695,29 @@ of 3.5 renders as "based on 4 training days/week over the last 4 weeks," never
 the raw 3.5, so the number and the label can never visibly disagree (the same
 failure the BMI 1dp-rounding decision exists to avoid).
 
+**TDEE rounds to the nearest 50 kcal**, not the exact kcal formula TDEE
+computes. Reason: formula TDEE runs ±15–20% against measured, so a
+to-the-kcal figure would claim precision it does not have. (The activity
+multiplier's own round-to-whole-days rule is already documented above —
+not duplicated here.)
+
 **The fence: one read-only number with an accuracy caveat, and nothing
 downstream consumes it.** No food logging, no macro split, no deficit or
 surplus targets. Formula TDEE runs roughly ±15–20% against measured, and the
 moment a calorie number becomes actionable in-app you have started building a
 nutrition tracker inside a lifting tracker. TDEE needs all four of sex, DOB,
-height and weight; any missing and the card is HIDDEN, not shown erroring.
+height and weight.
+
+**Correction — this originally said any missing input HIDES the card; that's
+superseded.** The Ledger has a third state this spec didn't anticipate: the
+gate (label + placeholder + "needs X" + an "Add details ›" link, see
+`gated-section.tsx`). Neither hidden nor erroring. Of Profile's four
+sections, the **three that are derivations of an input rather than the
+input itself** — BMI, relative strength, and caloric maintenance — gate
+rather than hide when their inputs are incomplete, because a silently-absent
+section can't tell you it needs your DOB — hiding it entirely would be
+quieter than the missing input deserves. Bodyweight is the fourth section
+and never gates: it IS the input, so there is nothing to gate it behind.
 
 **Relative strength.** e1RM ÷ current bodyweight, per lift — "1.62×
 bodyweight bench." How lifters actually talk about strength, the single best
@@ -685,10 +761,14 @@ data accrues from day one, and that is the part that cannot be backfilled.
 AyFit consumes any of them; each is a field maintained forever for no output.
 Same rule that killed implicit-recency surfacing.
 
-**Screen order, top to bottom:** header (wordmark + name) → bodyweight
-(current, log today's, goal delta — first because it is the only thing logged
-repeatedly here) → BMI → relative strength → TDEE → details (name, DOB, sex,
-height — rarely changed, so last).
+**Screen order, top to bottom:** header (wordmark + identity line, e.g.
+"Ayhan · 22 · male") → bodyweight (current, log today's, goal delta — first
+because it is the only thing logged repeatedly here) → BMI → relative
+strength → caloric maintenance → Details, COLLAPSED by default (name, DOB,
+sex, height — rarely changed, so last). The name moved OFF the header as a
+standalone label and INTO the identity line itself, alongside computed age
+and gender; the "details (name, DOB, sex, height)" grouping is otherwise
+unchanged from the original plan.
 
 **Glossary additions:** `BMI` (long-form, per above), `TDEE`, `relative
 strength`.
@@ -713,7 +793,12 @@ strength`.
   Unbounded's letterforms are wide enough that the wordmark's tracking
   drops to 0. Rendered at 30 on Track and 26 on Summary (up from 22/20 —
   both headers had spare vertical space), with the eyebrow line under it
-  at 14 (up from 12).
+  at 14 (up from 12). **Profile renders the Wordmark at 16**, against
+  Track's 30 and Summary's 26, per the Ledger spec — recorded here as
+  PENDING A DEVICE JUDGEMENT, not settled: it has only been seen in a
+  browser preview so far, and a 16px wordmark next to 30px/26px siblings on
+  the other two tabs is exactly the kind of size jump that reads differently
+  in hand than on a monitor.
 
 ---
 

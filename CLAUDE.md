@@ -969,6 +969,63 @@ OUT (roadmap):
   continuations, no `do`/`done` loops, no `&&` chaining assumptions. Paths
   containing brackets need quoting or `-LiteralPath` — e.g.
   `src/app/day/[date].tsx` — because PowerShell and git both read `[...]` as
-  a wildcard. Any command written for Ayhan to paste must be
-  PowerShell-valid as written.
+  a wildcard. **Parentheses need the same treatment, for a different
+  reason:** PowerShell evaluates `(tabs)` as a subexpression, so
+  `git add src/app/(tabs)/profile.tsx` fails unquoted, same as an
+  unquoted bracket path fails. Any command written for Ayhan to paste must
+  be PowerShell-valid as written.
+- TypeScript's `-?` in a HOMOMORPHIC MAPPED TYPE also strips `undefined`
+  from the property type, not just the optionality marker. So
+  `{ [K in keyof T]-?: T[K] }` turns `string | undefined` into `string`,
+  even where the source property writes `| undefined` explicitly. This
+  shipped a broken `ProfileFields` in `e92ed58` and was fixed in `d760ba0`
+  with a hand-written type. Verified with a minimal repro.
+- `.upsert()` IS UNUSABLE ON ANY TABLE whose real uniqueness guard is a
+  PARTIAL unique index over a nullable `user_id` — this is a GENERAL rule,
+  not just a `profile`/`bodyweight_log` quirk (both carry their own
+  table-local note on it in the Data model above, but the rule itself
+  belongs here). Two independent reasons: Postgres cannot infer a partial
+  index for `ON CONFLICT` (an INSERT carries no `WHERE` clause to match
+  against the index predicate), and `onConflict` on a nullable `user_id`
+  will not match a row where `user_id IS NULL`, since NULLs are distinct in
+  a unique index. The write path is read-then-insert-or-update. This
+  inverts once auth lands and `user_id` stops being nullable.
+- PostgREST's 1000-row `Max rows` cap applies to TOP-LEVEL rows only. An
+  earlier note in this project claimed an embedded `.limit()` was
+  truncation protection against that cap; it is not. What an embedded
+  limit actually buys is bounded payload and latency. Whether the cap also
+  applies to embedded rows is UNVERIFIED in this project and should not be
+  asserted either way.
+- YOGA DOES NOT COLLAPSE ADJACENT MARGINS THE WAY CSS DOES — THEY SUM. This
+  shipped a doubled gap under Profile's identity row, fixed in `2af8bbd`.
+  Rule: vertical spacing between two elements belongs to ONE of them, never
+  to both sides of the junction. Any new section dropped into an existing
+  stack must carry the same outer spacing as what it replaced, and the way
+  to know is to measure the gap above and below before and after the swap.
+- THE LINT BAR CHANGED. `331721a` fixed the last pre-existing error, so
+  `npm run lint` now passes FULLY GREEN. The bar is no longer "no new
+  errors" — it is "lint passes." Any error is new.
+- `scripts/verify-profile-utils.ts` COMPILES AND RUNS THE REAL UTIL FILES,
+  not reimplemented copies — so the "synthetic tests test a copy, not the
+  shipped file" bullet above does NOT apply to
+  `src/utils/{bmi,tdee,age,height,relative-strength}.ts`; those are
+  genuinely covered. 104 assertions as of `03298dd`. Run with:
+  `npx tsc scripts/verify-profile-utils.ts --outDir .tmp-verify --module commonjs --target es2022 --strict --ignoreConfig`
+  then `node .tmp-verify/scripts/verify-profile-utils.js`. TS 6.0.3 needs
+  `--ignoreConfig` when passing files on the CLI (TS5112). `.tmp-verify/`
+  is gitignored.
+- READ AND WRITE GET DIFFERENT ERROR TREATMENT, DELIBERATELY. A failed READ
+  swallows and falls back with no retry UI (all four Summary cards) —
+  correct, because a stale or empty card asserts nothing false. A failed
+  WRITE surfaces an inline error (Profile's weigh-in), because a silently
+  failed write leaves the user believing data was saved. Corollary learned
+  this phase: an empty state that makes a CLAIM (e.g. "Star a lift and log
+  a working set") must never be reachable from a failed read — check the
+  error flag BEFORE the empty check, or a network failure renders a false
+  instruction. See `relative-strength-section.tsx` and
+  `caloric-maintenance-section.tsx`.
+- COMPARING A ROUNDED FLOAT TO ZERO. Profile's goal delta rounds to 1dp
+  BEFORE the `=== 0` comparison. 0.1 is not exactly representable in binary
+  floating point — unlike the old 0.5-step wheel's 0.5 — so raw subtraction
+  cannot be compared to zero directly once a 0.1 step exists.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

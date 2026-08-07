@@ -1,535 +1,144 @@
 # AyFit — Project Foundation
 
 ## Current state
-_Last updated: 2026-08-04_
+_Last updated: 2026-08-07_
 
-**Track/Summary: dogfooding in progress.** Real workouts have been logged
-on-device for several days via the EAS build. Testing is ongoing (a few
-more days planned) before a conclusive list of UI/UX issues gets
-compiled — some have already surfaced in Track and, to a lesser extent,
-Summary, but nothing's finalized. Don't preemptively guess at or fix
-anything here before it's explicitly described.
+**Keep this section under ~150 lines.** It answers "where am I," nothing
+else. A durable lesson goes to Build conventions; a design decision goes to
+DESIGN.md; history goes nowhere, because git has it. When this section
+starts narrating how something was built rather than what is true now, cut
+it. It reached 530 lines once and stopped being usable. Open items is the
+part that legitimately grows and shrinks; everything above it should stay
+roughly the size it is now.
 
-**Guardrail while dogfooding continues:** don't modify exercises-repo.ts,
-exercise-favourite-repo.ts, workout-set-repo.ts, summary-repo.ts,
-exercise-list-grouping.ts, any screen under src/app/category/ or
-src/app/exercise/, or Summary's card components — and don't alter the
-shape of any existing table in schema.sql. New repo files that only read
-existing tables, and new strictly-additive tables, are fine. Editing what
-already exists is not, until testing concludes.
+### Status
 
-**Calendar is complete and closed out** — data layer, month grid,
-`/day/[date]`, navigation, all device-verified on the Pixel 7. One item
-remains outstanding: the return-to-an-exercise-later case needs a real
-session that deliberately doubles back on a lift. **Active build track:
-Profile** — unblocked because it shares no files with the guardrailed
-surface. Profile's design spec is DESIGN.md's "Profile — Phase 4" section.
+Track, Summary, Calendar and Profile are all built and reading from
+Supabase. Profile was the last unbuilt screen; it completed at `03298dd`.
 
-- **Last shipped:** commit 4 — exercise favourites + Back's
-  `movement_group` section labels on the exercise list, in three parts:
-  4a (`784802c`) the data layer (exercise-favourite-repo.ts,
-  fetchExercisesForMuscle's isFavourited/movementGroup embed,
-  exercise-list-grouping.ts), 4b (`d6f55ae`) SectionList rendering
-  (Favourites, movement_group, or flat), 4c (`6ef88dd`) the star toggle
-  wired to real add/removeFavourite writes. Confirmed via a real EAS
-  build installed on-device (Pixel 7), not just `tsc`.
-- **Pushed:** Everything committed so far is pushed. Verify with `git status`
-  rather than trusting this line.
-- **Done:** Track loop end-to-end — muscle picker → exercise list (DB-backed)
-  → per-set logging → writes persist to Supabase (sessions + sets) →
-  reopening an exercise mid-session now reads back today's already-logged
-  sets (Step 5c-iii). Read-back uses a read-only `getTodaySession()` that
-  never creates a session row — only a real write (`getOrCreateTodaySession`)
-  does that, so merely opening a screen can't spawn a phantom session.
-  Glossary/InfoTip system in place. Session lifecycle = lazy, one-per-day.
-  Track's visual redesign (v3 color system, DESIGN.md) is complete and
-  pushed: dark palette + category accents + JetBrains Mono/Inter type scale
-  (`src/constants/track-theme.ts`, scoped to Track only), restyled muscle
-  picker/exercise list/logging screens, weight/reps/RPE steppers, custom
-  warm-up pill, plate-in set animation. `getLastLoggedSet` read-only query
-  (workout-set-repo.ts) is live and wired into two screens: the per-set
-  logging screen (LAST TIME card, excludes today's session) and the
-  exercise list screen (per-row last-logged subtitle, no exclusion).
-  Shared formatters now live in `src/utils/`: `e1rm.ts`,
-  `format-relative-date.ts`, `format-number.ts` (`fmt` was deduplicated
-  from three separate local copies during this work).
-  **Summary tab is built and mostly wired to real data.** UI shell
-  (v3 tokens) has all four sections in DESIGN.md's Phase 2 order —
-  Consistency, Volume by muscle, Progression, Recent PRs — sharing the
-  same `Palette`/`Typefaces`/`TypeScale`/`CategoryAccent` tokens now
-  hoisted from `track-theme.ts` into `constants/theme.ts` (`track-theme.ts`
-  is a thin re-export shim so Track's own files needed no changes).
-  Progression is fully wired: `getExercisesWithHistory` +
-  `getE1rmHistory` (workout-set-repo.ts) drive real exercise chips
-  (most-recently-logged first, that's the real default selection now,
-  not a hardcoded name), the chart math itself (Catmull-Rom smoothing,
-  range filtering) is unchanged from the design mock, verified live
-  on-device. Volume by muscle is fully wired: `getVolumeByMuscle` (new
-  `src/lib/summary-repo.ts`) always returns all five categories
-  zero-filled, guarded against divide-by-zero on an all-zero week
-  (verified against a genuine all-zero current week live). New shared
-  util `getCurrentWeekRange()` (`src/utils/week-range.ts`) computes the
-  Monday-Sunday boundary Volume uses now and Consistency reuses too.
-  **Consistency is fully wired.** `getCurrentWeekRange()` takes an
-  optional `referenceDate` (arbitrary past weeks, not just today), and
-  `getConsistency()` (`summary-repo.ts`) returns
-  `{ sessionsThisWeek, weeklyStreak, completedDays }` from a single
-  `session.date` query, bucketed by week. Streak is strict — an
-  in-progress week with nothing logged yet breaks it immediately, no
-  grace period. `completedDays` is a 7-element Monday-first boolean
-  array (feeds the card's day-by-day ledger strip), derived from the
-  same already-fetched dates, no second query. `consistency-card.tsx`
-  mirrors `volume-card.tsx`'s exact fetch shape (`useEffect`/`useState`,
-  swallow-and-fallback to zero/all-false on error, no retry UI — neither
-  sibling card has one either). Verified against synthetic cases
-  (consecutive weeks, a gap week, a 0-session current week after a real
-  streak, empty history, a mixed trained/untrained week) plus a live
-  read-only smoke test against the dev DB, then click-through on-device
-  including a forced-error fallback check.
-  **Consistency, Volume, and Progression are all fully wired now.**
-  PR detection's data layer is done, for Summary only: `pr-detection.ts`
-  exports a pure `detectPrSessions()` (no Supabase) — per exercise,
-  chronologically sorted, skip the first-ever session (nothing earned
-  yet to beat), emit an event wherever a later session's e1RM strictly
-  exceeds the running max so far. `getRecentPRs(limit = 5)`
-  (`summary-repo.ts`) is a single query joining `workout_set` to
-  `exercise`/`session`, reduces to one best-e1RM entry per
-  exercise-per-session, feeds that into `detectPrSessions()`, sorts
-  descending by date, slices to `limit`. Computed live every call, no
-  stored best-value/PR columns anywhere — same philosophy as e1RM and
-  Volume, and specifically chosen so a deleted set can never leave a
-  stale stored value behind. Recency-capped (most recent N PR-setting
-  sessions), not time-windowed, so the card doesn't go blank on a slow
-  stretch. An exercise's very first-ever session is never a PR by
-  design — verified against 6 synthetic cases (single session, strictly
-  increasing, exact tie, dip-then-re-break, more events than `limit`,
-  empty history) plus a live read-only smoke test.
-  `recent-prs-card.tsx` is now wired too: `useEffect`/`useState`,
-  swallow-and-fallback to `[]` on error, same shape as the other three
-  cards. Added a `loading` state and an `emptyText` state (mirroring
-  `progression-card.tsx`'s "No e1RM data yet" convention) — the shell
-  never had either, since its placeholder array was always hardcoded
-  non-empty. Gold styling (`#FFC738`) is static only, unchanged from
-  the original markup — no flash/glow/haptic added; verified via
-  computed styles (`animationName: none`) on a temporarily-stubbed
-  fake-data pass (injected inline, click-through confirmed, reverted —
-  `git diff` showed only the real wiring after).
-  **All four Summary cards — Consistency, Volume, Progression, Recent
-  PRs — are now fully wired to real, computed-live data. Summary is
-  done.** Live dev DB currently has 0 PR events (only 1 non-warmup set
-  logged so far), so the empty state is what's actually been verified
-  live; the gold-card-with-content visual was verified via the stubbed
-  pass above, not yet against real earned data.
-  **Scope note, still true:** this is Summary's historical PR list
-  only. Track's live gold-flash moment (per-set comparison against the
-  running max of every prior set for that exercise, no session-grouping
-  needed there) remains a separate, deferred task — a real-time
-  UI/haptic moment triggered at set-insert time, not a data-fetch-and-
-  render card, so it needs its own scoping conversation rather than
-  reusing this thread's wiring pattern.
-  **EAS build for a standalone Android APK is done.** Commit `b5955a3`
-  (pushed to `origin/master`): `android.package` set to
-  `com.syedayhanhabib.ayfit` in `app.json`; `eas.json` scaffolded via
-  `eas build:configure`, with the `preview` profile explicitly set to
-  `"distribution": "internal"` + `"android": { "buildType": "apk" }`
-  (the scaffold's default would otherwise have produced an AAB).
-  Supabase env vars (`EXPO_PUBLIC_SUPABASE_URL`,
-  `EXPO_PUBLIC_SUPABASE_ANON_KEY`) registered in EAS's `preview`
-  environment via `eas env:set`/`eas env:create`, not committed to the
-  repo. `eas build --profile preview --platform android` was run and
-  succeeded — EAS auto-generated and manages the Android keystore, no
-  manual signing setup needed. The resulting APK is installed on a
-  real Android device and confirmed working end-to-end with a real
-  write (a shoulder exercise set logged and read back correctly),
-  independent of Expo Go/Metro/shared wifi for the first time.
-  **Phase 1.5 real-device polish pass, batch 1 is done** (four commits,
-  pushed): (1) tab bar — labels now always render for all four
-  tabs (`labelVisibilityMode="labeled"` fixes Android's 4-tab
-  selected-only collapse), real MaterialCommunityIcons per tab
-  replacing two duplicated placeholder assets. (2) Shared `Wordmark`
-  component (`src/components/wordmark.tsx`) replaces "AYFIT" duplicated
-  in Track/Summary headers — mixed-case "AyFit", Space Grotesk bold
-  (new font load in `_layout.tsx`), chalk-white-to-brand-purple
-  diagonal gradient via expo-linear-gradient + masked-view (both
-  already installed); web's masked-view shim has no real masking so it
-  gets a static brand-purple fallback there, irrelevant on native.
-  Track's header copy: "Track — pick a muscle" → "Track your workout —
-  pick a muscle". (3) Per-set logging screen: wrapped in `SafeAreaView`
-  (header was colliding with the status bar/notch on-device, back
-  button unreliable); reordered top-to-bottom to header → input card
-  (weight/reps/RPE + warm-up + Add Set, now pinned just below the
-  header instead of a scroll-away bottom footer) → e1RM this session →
-  set ladder → LAST TIME (now trails, was first); live input numeral
-  bumped 19px → 28/32 with wider input boxes. See DESIGN.md's Track —
-  Phase 1.5 section — this supersedes two of Phase 1's original
-  non-negotiables (bottom-pinned Add Set, LAST TIME visible first).
-  (4) Glossary/InfoTip: RPE and warm-up tips wired in on the logging
-  screen (glossary entries existed but weren't rendered), InfoTip icon
-  bumped 16px → 20px with a 48pt touch target (hitSlop 14), dotted
-  underline added under each tipped term label, RPE/e1RM glossary copy
-  replaced with expanded verified text.
-  **Phase 1.5 batch 3 is done** (three commits, also pushed). Batch 2
-  was skipped in favour of it. (1) Wordmark: gradient direction flipped
-  to deep→brand (`Palette.brandDeep` first) so it brightens as it reads
-  instead of fading out at the tail; font swapped Space Grotesk bold →
-  **Unbounded ExtraBold** (`@expo-google-fonts/unbounded`, new font load
-  in `_layout.tsx`) with tracking pulled 0.5 → 0 because Unbounded's
-  letterforms are already wide; sizes 22 → 30 (Track) and 20 → 26
-  (Summary), eyebrow line 12 → 14 on both. `@expo-google-fonts/space-grotesk`
-  is left installed on purpose so reverting the face is a one-liner.
-  (2) Tab bar icons now tint on selection. Root cause: only *labels*
-  were ever styled — `labelStyle`'s nested `{default, selected}` covers
-  text only, and icon color is a **separate `NativeTabs` prop**
-  (`iconColor`, same `{default, selected}` shape, split internally into
-  `iconColor`/`selectedIconColor`) that was never set, so icons fell
-  through to Android's `onSurfaceVariant` in both states. Confirmed
-  against expo-router's real type defs rather than guessed. Native-only:
-  web uses `app-tabs.web.tsx`, which never touches `NativeTabs`, so this
-  fix is unverified until the next device run.
-  (3) **The Kg/Reps/RPE stepper row is gone**, replaced by three
-  tappable `ValueChip`s (`src/components/track/value-chip.tsx`) plus a
-  per-field `WheelPickerModal`
-  (`src/components/track/wheel-picker-modal.tsx`) — a snap-scrolling
-  alarm-picker-style wheel, one field at a time. `StepperField` was
-  deleted outright (`[exerciseId].tsx` was its only consumer, grepped).
-  Wheels: Kg 2.5–300 @2.5, reps 1–50 @1, RPE 1–10 @0.5; empty fields
-  open at the old stepper bases (60/5/8) and render "—" rather than
-  being pre-filled. Validation (`parseValid*`, `isValid`, Add Set
-  enable/disable) is **untouched** — a UI-layer swap over the same
-  `weightInput`/`repsInput`/`rpeInput` state. The weight wheel starts at
-  2.5 rather than 0 specifically because 0 has always failed
-  `parseValidWeight`, so a 0 stop would be selectable-but-invalid and
-  silently keep Add Set disabled. See DESIGN.md's Track Phase 1.5 batch 3
-  section for the full rationale plus its two accepted consequences (no
-  free-text numeric entry on this screen any more; off-grid values like
-  61kg or RPE 7.25 are no longer expressible).
-  **Stale-data-until-relaunch bug is fixed** (`fd64f34`). Symptom: a set
-  logged on Track didn't appear on Summary until the app was force-closed
-  and reopened. Cause was *when* fetches ran, not what they fetched — all
-  four Summary cards used `useEffect(..., [])`, and the tab navigator keeps
-  every tab's screen mounted (native: `NativeTabsView.android.js` maps over
-  all tabs and `ScreenContent` calls `contentRenderer()` with no focus gate;
-  web: `TabSlot`'s `loaded` map persists and `unmountOnBlur` is off), so
-  there was never a second mount to re-trigger them. Now on
-  `useFocusEffect` — imported from **`expo-router`**, which ships its own
-  fork of it, rather than `@react-navigation/native` directly. Its deps are
-  `[effect, navigation, …]`, so a `useCallback` keyed on state re-runs on
-  focus *and* on that state changing; that's how Progression's
-  selection-keyed history fetch needs only one hook. `summary-repo.ts` /
-  `workout-set-repo.ts` were **not** touched — computed-live was already
-  right. Two notes: (a) **Calendar had no bug** — `(tabs)/calendar.tsx` is
-  still a placeholder that fetches nothing and there is no
-  `calendar-repo.ts`, so there was nothing to refetch; (b) the **exercise
-  list** (`category/[category].tsx`, now
-  `category/[category]/[muscle].tsx`) *did* have it, reached by
-  back-navigation instead of a tab switch (it stays mounted under the pushed
-  logging screen, so its "last logged" subtitles showed pre-workout values)
-  — fixed in the same commit. Progression also needed its default-selection
-  logic guarded: re-running on every focus would otherwise reset the user's
-  chosen exercise chip, so it now only picks a default when there isn't a
-  valid one already. Cards deliberately don't reset to `null` before
-  refetching, so tabbing in doesn't flash a spinner over data already on
-  screen. Accepted tradeoff: each focus of Summary issues 5 queries; no
-  cache layer, correctness on focus matters more for a personal-use app.
-  **A muscle-picker level now sits between the category tiles and the
-  exercise list, and the rule deciding whether it appears is data-driven.**
-  A nav_category with more than one muscle shows the picker; one with
-  exactly one skips straight to that muscle's exercise list via a
-  replace-style `Redirect` (expo-router's `Redirect` calls `router.replace`,
-  verified in its source — so the picker leaves the stack and back can't
-  bounce forward into it again; a push there would do exactly that).
-  Nothing is hardcoded per category: Chest and Back auto-skip today and
-  start branching the day either gets a second muscle row. Routes are
-  `category/[category]/index.tsx` (picker) and
-  `category/[category]/[muscle].tsx` (exercise list, moved from
-  `category/[category].tsx`), and the list filters by muscle now rather
-  than nav_category — `fetchExercisesForMuscle`, `!inner` on the join.
-  Glutes and calves are seeded, so Legs is 4 muscles and the table is 11
-  rows; `supabase/seeds/001_muscles.sql` is the file that was actually run
-  against the DB (DML-only, idempotent) and `schema.sql` mirrors it. New:
-  `lib/muscle-repo.ts`, `types/muscle.ts`, `utils/format-muscle-name.ts`,
-  `utils/pluralize.ts`. Muscle names are stored lowercase and capitalised
-  at display time. The picker is on `useEffect`, **not** `useFocusEffect` —
-  deliberate: it shows nothing per-session (no "last trained" subtitles) so
-  nothing can go stale while the app is open, and staying off the focus
-  path stops the single-muscle redirect re-evaluating on every focus.
-  Verified on a Pixel 7: Shoulders → Front delt → back → back clean (the
-  multi-word route param, which encodes as `%20`, works on native), Chest
-  auto-skip with no visible flash and no forward bounce, Legs picker at 4
-  with Calves/Glutes on the empty state.
-  **Commit 2 is done and pushed** — three commits: `451a360` (schema DDL),
-  `8f2afe6` (exercise catalogue + reset script), `f9a1c6e` (muscle display
-  order). What changed:
-  **`schema.sql` is now structure-only.** It used to carry its own copy of
-  the muscle and exercise INSERTs alongside `supabase/seeds/`, which could
-  drift; that duplication is resolved in favour of the seed files, which own
-  all row data now. See Build conventions for the run order.
-  **A 189-exercise catalogue replaces the ~20 placeholder rows**
-  (`seeds/002_exercises.sql`). Naming grammar is **[Angle] [Equipment]
-  [Movement]**, with the angle always explicit and never implied — so
-  "Flat barbell bench press" files under F, not B. That's deliberate:
-  alphabetical sort then clusters variants the way you actually choose one
-  (angle first, then implement), and no per-muscle grouping metadata is
-  needed to get it.
-  **`exercise.name` stays GLOBALLY unique, deliberately not
-  unique-per-muscle.** One movement gets exactly one row and exactly one
-  home muscle, so its e1RM line and PR history can never fragment across
-  duplicate rows. Consequence: if a lift feels like it belongs to two
-  muscles, pick one — close-grip bench is filed under triceps, and the
-  conventional/sumo deadlifts under back > lower back while the RDL family
-  sits under hamstrings.
-  **Back carries `movement_group` in four sections** — vertical pull,
-  horizontal pull, traps, lower back — rather than drilling down into
-  sub-muscles. Mixing two movement patterns with two regions is
-  intentional; vertical/horizontal alone leaves shrugs and deadlifts in an
-  unlabelled void. See DESIGN.md for the governing principle ("drill down
-  where the split is unambiguous, label where it is fuzzy").
-  **The original ~20 Title Case exercise rows and all test history were
-  deleted outright** via `supabase/scripts/001_reset_test_data.sql` —
-  one-time, run on 2026-07-28, and not part of the seed run order. They
-  predated the naming grammar and everything logged against them was
-  throwaway test data, so deleting beat renaming in place. Muscle rows were
-  not touched. All four SQL files were applied to the live dev DB that same
-  day and verified: 189 exercise rows total, back 40, split 12/15/5/8.
-  **Commit 3 is done — the exercise list's N+1 is gone.** It used to call
-  `getLastLoggedSet` once per row (fine at ~4 rows, not at 25); that loop is
-  replaced by `getLastLoggedSetsForMuscle` (`workout-set-repo.ts`) — one
-  batched PostgREST query using an **embedded-resource limit**
-  (`.limit(1, { referencedTable: 'workout_set' })`), so a single round trip
-  returns the latest set per exercise. Not fetch-everything-and-reduce, and
-  not an RPC. Two deliberate details:
-  (a) `workout_set` is embedded **without `!inner`** — the one intentional
-  exception to the `!inner` convention below. A never-logged exercise must
-  still come back, with an empty embed, or it vanishes from the list
-  entirely. The `is_warmup` filter is a separate embedded filter param, which
-  PostgREST puts inside the lateral subquery's WHERE, so it applies *before*
-  the limit and a trailing warm-up can't surface as the last logged set.
-  (b) `getLastLoggedSet` is **retained, not deleted** — the logging screen
-  needs its `excludeSessionId` so "LAST TIME" doesn't echo the set you added
-  ten seconds ago, and the browsing screen deliberately omits it ("last
-  logged" there means literally the last time, even if that was today). Both
-  carry a comment saying why the other exists.
-  Call site (`category/[category]/[muscle].tsx`) stays on the same
-  `useFocusEffect` path as before (per `fd64f34`) and now runs the two
-  queries under one `Promise.all`. `referencedTable` is the correct option
-  name for the installed `@supabase/postgrest-js` 2.110.0 — `foreignTable`
-  is deprecated in its own type defs. Verified: `tsc` clean, and the
-  generated request URL inspected offline. **Not yet run against real data** —
-  two things to check on the next device pass. First, that never-logged
-  exercises still render as rows (that's what the missing `!inner` buys; if
-  it's wrong the list goes nearly empty, which is loud and obvious). Second,
-  that a trailing warm-up doesn't displace a working set in a row's subtitle
-  — this is the **silent** one of the two, because a warm-up weight renders as
-  a perfectly plausible number rather than an obvious break, so it has to be
-  deliberately looked for instead of waiting to be noticed. Reproducing it
-  needs a working set followed by a warm-up on the same exercise.
-  **Step 5a is done — Calendar's read-only data layer** (commit `0d3b280`):
-  four new files, zero existing files touched. `src/utils/local-date.ts`
-  (canonical home for local-date math: `formatDateLocal`, `parseDateLocal`,
-  `todayLocalDate`, `getMonthRange`), `src/types/calendar.ts`,
-  `src/utils/session-blocks.ts` (pure `groupIntoSessionBlocks`, no Supabase
-  import — same math-vs-fetching split as `pr-detection.ts`),
-  `src/lib/calendar-repo.ts` (`getTrainedDaysInMonth`,
-  `getSessionDayDetail`). Verified against the dev DB via a throwaway
-  read-only smoke script (deleted after use): limited and unlimited embeds
-  returned identical date sets, so `!inner` and the embedded `limit` don't
-  conflict on real data; `workout_set`-under-`session` comes back as an
-  ARRAY while `exercise`/`session`-under-`workout_set` come back as
-  OBJECTS, both matching the declared `.returns<>()` types; warm-ups
-  present (13 sets on 2026-07-30, `is_warmup: true` among them); an empty
-  date returns zero rows, hence `null`. **Not yet verified against real
-  data:** the return-to-an-exercise-later block split — only the synthetic
-  `A A B B A` case in `session-blocks.ts` covers it, since 2026-07-30's
-  three logged exercises never repeat. Closes itself the first time a real
-  session doubles back on a lift.
-  **Open thing to look for once 5b lands (not a fix now):**
-  `getOrCreateTodaySession` (`session-repo.ts`) keys off `todayLocalDate()`
-  at write time, so a workout crossing local midnight plausibly produces
-  two session rows on two dates, and Calendar would show it split across
-  two days. `getSessionDayDetail` degrades gracefully since it collects
-  sets by date rather than by session, but the split itself would still be
-  visible on the month grid. Late-night training (see the 07-30 real-data
-  evidence above, 00:31–01:17 local) makes this non-hypothetical. Needs
-  confirming against real data, not assuming.
-  **Deferred capture-time change:** `workout_set.created_at` is currently
-  server-insert time via `default now()`, which only equals performed time
-  while always online. Once writes queue offline, a flushed batch lands
-  with near-identical timestamps and performed order scrambles. The fix is
-  to set `created_at` client-side at capture time — one line in
-  `workout-set-repo.ts` — deliberately deferred to the offline-support
-  phase, since that file is guardrailed and will already be open then.
-  Ordering stays `created_at` then `id` as a deterministic tiebreak,
-  unchanged.
-  **Step 5b is done** in two commits: `5c8c8b4` — `src/utils/month-grid.ts`,
-  pure `buildMonthGrid(year, month)`: Monday-first weeks of fixed length 7,
-  explicit `null` blanks before day 1 and after the last day, row count
-  derived (4/5/6) rather than hardcoded. No Supabase or React import; date
-  keys built via `local-date.ts` so they join directly against
-  `getTrainedDaysInMonth`. `5299874` — `src/app/(tabs)/calendar.tsx`, the
-  month grid UI: neutral chalk dots, brand ring on today, day-trained count
-  on its own line, arrows with the forward one disabled on the current
-  month, a conditional Today button. Fetch runs on `useFocusEffect` with
-  TWO out-of-order guards — a per-run `cancelled` closure plus a
-  month-tagged loaded state — and a fetch failure renders an explicit error
-  state rather than falling through to an empty array. No cell is pressable
-  yet; `/day/[date]` arrives in 5c.
-  **Verification, and its limits:** `buildMonthGrid` was independently
-  cross-checked against Python's Monday-first `calendar` module for every
-  month 1970–2100 (1,572 months) — row counts, blank positions, and date
-  keys all matched. `calendar.tsx`'s grid was confirmed against the dev DB
-  and via computed styles in a web preview at the time this step landed.
-  **It is now device-verified too** — the 5c device pass (see the resolved
-  checklist below) covered the grid alongside the day-detail route, so
-  every perceptual question originally deferred here has been checked, not
-  left open.
-  **5c on-device checklist — RESOLVED, all fine** (recorded rather than
-  deleted, so the record shows these were checked rather than quietly
-  dropped): dot weight (6px, `Palette.text` chalk) reads as intentional,
-  not too heavy or too faint; today's ring (30dp circle, 1.5 border,
-  `Palette.brand`) reads as intentional, not a rendering artifact; arrow
-  thumb-reach at the top of a 6.3" screen is comfortable one-handed; and
-  the permanent ~48dp empty band between the header and the weekday row on
-  the CURRENT month reads as breathing room, not a hole. Checked alongside
-  them during the same pass: dotless cells are genuinely inert (no
-  accidental tap targets), back-navigation from `/day/[date]` returns to
-  the month that was being viewed (confirming the mounted-under-a-pushed-
-  route assumption behind `useFocusEffect`), warm-up rows are legible at
-  their recessive styling, and 2026-07-30's day detail matches the
-  expected numbering (13 sets, 3 exercises, 1-4 / 1-3 / 1-2). Header wrap
-  is deliberately NOT on this list: moving the count to its own line
-  eliminated that question rather than deferring it.
-  **Step 5c is done** in two commits: `f5f1809` — set numbering and day
-  totals in the data layer. `numberWorkingSets` numbers working sets
-  continuously per exercise across the whole day, keyed on `exerciseId` so
-  a revisited exercise continues rather than restarting; warm-ups carry
-  `workingSetNumber: undefined` and never advance the counter.
-  `getDayTotals` returns total sets (warm-ups included, per the ledger
-  rule) and DISTINCT exercise count, not block count. `getSessionDayDetail`
-  composes both, so the UI does no arithmetic. `groupIntoSessionBlocks`
-  itself untouched, so its existing 8-case verification still holds.
-  `bdd4a6a` — `src/app/day/[date].tsx` plus pressable dotted cells in
-  `calendar.tsx`, and `src/utils/date-display.ts` (month names shared with
-  `calendar.tsx` rather than duplicated — the `fmt()` duplication the
-  parking lot exists to prevent). Four distinct states: loading, loaded,
-  "Nothing logged", and an explicit fetch error that never falls through
-  to the empty state. The route param is validated against `YYYY-MM-DD`
-  BEFORE querying, so a malformed deep link renders the empty state
-  instead of surfacing a PostgREST 400 as a load failure. Only dotted
-  cells are pressable; dotless cells are fully inert.
-  **Numbering verification:** the smoke script's expected output was
-  written BEFORE any code existed, checked against 2026-07-30 whose
-  contents were already independently known from 5a's run — 13 sets, 3
-  exercises, numbering 1-4 / 1-3 / 1-2 with warm-ups unnumbered. That's the
-  assertion that couldn't be retrofitted to match a buggy implementation.
-  Claude Code's own synthetic expectations had to be corrected twice
-  during 5c-i — it had assumed per-block reset instead of
-  continuous-per-exercise numbering — the algorithm was right and the test
-  was wrong, worth recording precisely because "the test was wrong" is
-  also how a bug gets ratified.
-  **Two small things flagged in 5c-ii's review, checked just now and both
-  fine:** `day/[date].tsx`'s working-set index uses `padStart(2, '0')`
-  ("01", "02") — compared against Track's `SetRow` (`set-row.tsx:29`),
-  which renders its own index the same way (`String(index + 1).padStart(2,
-  '0')`), so the two screens already agree; no divergence, no action
-  needed. And reimplementing a back chevron in `day/[date].tsx` rather
-  than importing Track's `BackButton` was the right call — `BackButton`
-  lives at `src/components/track/back-button.tsx`, colocated under Track
-  rather than shared top-level infrastructure, confirmed by checking where
-  the file actually is rather than assuming.
-  **Still open on Calendar:** the return-to-an-exercise-later case is
-  unverified against real data. Both halves depend on it — that
-  `groupIntoSessionBlocks` emits a SECOND block for a revisited exercise,
-  and that numbering continues into it (4, 5) rather than restarting at
-  1 — and only synthetic cases cover either. Nothing but a real workout
-  that doubles back on a lift will produce this data. Action item:
-  deliberately do that during ongoing dogfooding (e.g. bench, something
-  else, bench again), then open that day in Calendar.
-  **Step 6a is done** — commit `2eb5f5b`, "schema: add profile and
-  bodyweight_log tables". Additive DDL only, zero existing tables touched,
-  applied to the live dev DB and verified by Ayhan in the Supabase SQL
-  editor: all 8 constraints present with Postgres's auto-generated names,
-  both partial indexes present with their `WHERE` clauses intact, and BOTH
-  NULL-uniqueness guards proven by deliberately colliding inserts inside a
-  rolled-back transaction rather than assumed. Both tables confirmed empty
-  afterwards.
-- **Next:** Calendar is complete — data layer, month grid, day detail,
-  navigation, all device-verified. Profile is the active track. Landed so
-  far, in order: `2eb5f5b` (6a, schema: profile + bodyweight_log, applied
-  and verified live), `31b2a59` (6b, docs: Profile Phase 4 spec + data
-  model + 2 build conventions), `b32035f` (6c, utils: bmi.ts, tdee.ts,
-  age.ts + regression harness), `e92ed58` (6d, data: profile-repo,
-  bodyweight-repo, activity-repo, types/profile), `606f67b` (6d-ii, data:
-  relative-strength-repo + relative-strength.ts), `d760ba0` (6e, profile:
-  v3 scaffold + Details card, ProfileFields type fix). Revised remaining
-  sequence — one wired card per commit, no separate shell/wiring split:
-  6f bodyweight card (current weight, log today's, goal delta), 6g BMI
-  card (needs a Claude Design pass for the scale), 6h relative strength
-  card, 6i TDEE card, 6j docs commit + real-device pass.
-  **Phase 1.5's on-device pass is now confirmed complete** — the three
-  items it used to owe (the tab-bar icon tint, since web never renders
-  `NativeTabs`; the wheel's scroll-snap *feel*; and the focus-refetch fix
-  on native `NativeTabs` rather than web's `TabSlot`) have all been
-  exercised live across several days of real dogfooding on the Pixel 7
-  EAS build. Commit 3's two device checks (never-logged exercises still
-  rendering as rows; a trailing warm-up not displacing a working set in
-  a row's subtitle — see the Done bullet above) remain **open and
-  unconfirmed** — dogfooding hasn't specifically targeted them yet.
-  **Sequencing after dogfooding wraps:** fix whatever Track/Summary
-  issues testing surfaces, then offline support (writes currently fail
-  outright with no connectivity — needs to land before auth so every
-  write path, including whatever Calendar/Profile end up adding, only
-  grows a queue/sync story once), then auth + RLS, then one more EAS
-  build, then the APK goes to friends. Track's live PR gold-flash
-  remains parked/deferred as before, not scoped yet.
-- **Parking lot:** `src/utils/local-date.ts` now EXISTS as the canonical
-  home for local-date math (landed with step 5a). `session-repo.ts`'s
-  `todayLocalDate()` and `summary-repo.ts`'s `formatDateLocal`/
-  `parseDateLocal` are still separate copies, not yet migrated onto it.
-  `summary-repo.ts` is guardrailed (see the dogfooding note at the top of
-  this section), so its migration stays parked until dogfooding concludes;
-  `session-repo.ts` is not guardrailed, so that one can move onto the
-  shared util any time.
-  Also parked: **give the logging screen a distinct error state.**
-  `src/app/exercise/[exerciseId].tsx:92` stores `null` on fetch failure,
-  which renders "Exercise not found" — so a network error is
-  indistinguishable from a genuinely missing row, and the screen tells
-  the user something false. Today that needs a dropped connection to
-  hit, so it's rare; once offline support lands it becomes routine,
-  which is when a wrong message stops being a curiosity and starts being
-  the normal experience. Fix is a third state, not a different sentinel
-  value (see the undefined-vs-null convention in Build conventions,
-  where this is recorded as a symptom).
-  Also parked: **Calendar's stale-data policy on a background refetch
-  failure.** If a same-month refocus refetch fails, `calendar.tsx`
-  currently discards the dots that were already correct on screen and
-  shows the error banner instead — a real, small regression, taken
-  deliberately. Offline support (next in the sequence after dogfooding
-  wraps) will set ONE app-wide policy for stale data, retries, and error
-  surfacing; building a bespoke stale-while-revalidate for Calendar now
-  would mean writing that logic twice and throwing one copy away. Revisit
-  during the offline phase, not before.
-  Also parked: **Calendar's today-ring can go stale across local
-  midnight.** `calendar.tsx` computes `today` per render, so it refreshes
-  on refocus but not while the screen sits open uninterrupted across local
-  midnight — the brand ring can briefly sit on yesterday's date. Minor,
-  and only reachable by late-night training with the screen left open (see
-  the 07-30 late-night evidence above).
-  Also parked: `day/[date].tsx` renders a working set's number via
-  `String(set.workingSetNumber)` guarded by `set.isWarmup`, which leans on
-  a correlation the type system doesn't know about — `isWarmup` being
-  `false` does not narrow `number | undefined`, so if that invariant ever
-  broke this would render the literal string "undefined". Narrowing on
-  `set.workingSetNumber === undefined ? 'W' : ...` instead would be
-  equivalent today and compiler-enforced. Cheap fix, do it whenever.
-  Also parked, low priority: `month-grid.ts`'s `new Date(y, m, d)`
-  construction, at local midnight, can roll back a day in a timezone whose
-  DST transition happens exactly at midnight — which would duplicate one
-  date and drop another. Does NOT apply here: Pakistan has no DST.
-  Recorded so it isn't rediscovered as a mystery if this ever ships
-  somewhere like Brazil-as-was.
+**Track and Summary are still being dogfooded** on the Pixel 7 EAS build.
+Issues have surfaced in Track and, less so, Summary, but the list isn't
+final. Don't preemptively guess at or fix anything there.
 
-Rule going forward: update the "_Last updated_" line and these bullets at the
-end of each session. This section is the source of truth for "where am I."
+Next action is an EAS build carrying Profile, then a device pass.
+
+### Active guardrail
+
+While dogfooding continues, do not modify: `exercises-repo.ts`,
+`exercise-favourite-repo.ts`, `workout-set-repo.ts`, `summary-repo.ts`,
+`exercise-list-grouping.ts`, anything under `src/app/category/` or
+`src/app/exercise/`, Summary's card components, the shape of any existing
+table in `schema.sql`, or `src/components/track/wheel-picker-modal.tsx` and
+`value-chip.tsx` (the guardrailed logging screen consumes both).
+
+Reading and importing any of these is fine. New read-only repo files, new
+strictly-additive tables, and new components elsewhere are fine. Editing
+what already exists is not, until dogfooding concludes.
+
+This guardrail is Ayhan's own — he can move it. Its purpose is to keep the
+surface under test from shifting mid-test.
+
+### What's built
+
+**Track** — muscle → exercise → set, freestyle, no templates. A muscle
+picker sits between category tiles and the exercise list, shown only when a
+category has more than one muscle. 189-exercise catalogue, explicit
+favourites, Back's `movement_group` section labels. Per-set logging via
+tappable `ValueChip` + `WheelPickerModal` wheels. v3 dark palette, glossary
+InfoTips. Writes persist to Supabase; reopening an exercise mid-session
+reads back today's sets.
+
+**Summary** — all four cards wired to live computed data: Consistency,
+Volume by muscle, Progression (e1RM line, exercise chips, range toggle),
+Recent PRs. Nothing is stored precomputed; e1RM, volume and PRs are derived
+on every read, so a deleted set can never leave a stale value behind.
+
+**Calendar** — month grid with trained-day dots, `/day/[date]` detail with
+session blocks and continuous per-exercise set numbering. Device-verified;
+the 5c checklist and its resolution are recorded in `7c5cdcb`.
+
+**Profile — "The Ledger"** (see DESIGN.md's Profile — Phase 4). A flowing
+document, not cards: header with wordmark + identity line, then bodyweight,
+BMI, relative strength, caloric maintenance, and a collapsed Details
+section. Four sections; the three that derive from an input gate when that
+input is missing, bodyweight never does because it IS the input. Utils are
+covered by `scripts/verify-profile-utils.ts` — 104 assertions against the
+real shipped files, including the live values.
+
+### What's next
+
+1. **EAS build** carrying Profile, then the device pass below.
+2. **Track/Summary fix list** — compile from dogfooding, then fix.
+3. **Offline support.** Writes currently fail outright with no
+   connectivity. Must land before auth, so every write path only grows a
+   queue/sync story once.
+4. **Auth + RLS.** `user_id` columns exist and are nullable; `session`
+   still needs the column added.
+5. **Final EAS build**, then the APK goes to training partners.
+
+Deferred, not scoped: Track's live PR gold-flash at set-insert time.
+
+### Open items
+
+**Profile device pass** (nothing here is browser-answerable):
+- BMI marker (16px tall, `top: -4`) on an 8px track with `borderRadius: 4`
+  relies on `overflow: 'visible'` — some Android RN versions clip against a
+  rounded parent, which would render it as a stub.
+- BMI marker and off-scale chevron may collide at BMI under 15 or over 40.
+- "2500 kcal" measures 280.8px in a 331.2px container — the longest hero
+  number, so first to break under Android font-size scaling.
+- Cold-start reflow: four independent fetch chains resolve separately, so
+  sections pop in and push later ones down.
+- Exercise names truncate tail-first in relative strength, and the naming
+  grammar puts the movement at the tail.
+- Wordmark at 16 on Profile against Track's 30 / Summary's 26.
+- Two-wheel 0.1kg picker scroll feel; whether the soft keyboard covers
+  Details' Save button; fonts generally.
+- `InfoTip`'s BMI paragraph has no internal scroll or max-height — fine at
+  375×812, may overflow a shorter viewport.
+- EXPECTED, NOT A BUG: caloric maintenance reads low. The 4-week window
+  holds 4 trained dates all inside one week, so the average is 1 trained
+  day/week and the multiplier bands to 1.375. That is `activity-repo.ts`'s
+  documented understating characteristic, and the derivation line under the
+  number states it. Do not "correct" the band.
+
+**Unverified against real data:**
+- `bodyweight_log` has only one row, so two things have never rendered
+  their real values: the "Today" row label, and a non-dash figure in the
+  recent list's change column. Both need a second weigh-in on a different
+  date.
+- Calendar's return-to-an-exercise-later block split and its numbering
+  continuation. Needs a real session that doubles back on a lift.
+- Commit 3's two checks: never-logged exercises still rendering as rows,
+  and a trailing warm-up not displacing a working set in a subtitle.
+- Whether a workout crossing local midnight produces two session rows on
+  two dates (`getOrCreateTodaySession` keys off `todayLocalDate()`).
+
+**For the offline phase** — it sets one app-wide stale-data policy, and
+there are now four sites carrying that policy locally, not two: Calendar's
+refetch-failure banner, Profile's four independent fetch chains, Profile's
+weigh-in write (a successful write followed by a failed refetch takes the
+success branch and leaves stale weight on screen), and the logging screen's
+"Exercise not found" on a fetch failure. Also deferred here:
+`workout_set.created_at` moving to client-side capture time.
+
+**Parking lot** — cheap, do whenever:
+- `session-repo.ts`'s `todayLocalDate()` onto `src/utils/local-date.ts`
+  (`summary-repo.ts`'s copies stay parked; guardrailed).
+- `day/[date].tsx` narrowing on `workingSetNumber === undefined` rather
+  than on `isWarmup`, which the type system doesn't correlate.
+- `weight-picker-modal.tsx` and `wheel-picker-modal.tsx` share snap-scroll
+  logic; consolidate when the guardrail lifts.
+- `range()` exists in both `profile.tsx` and `[exerciseId].tsx`;
+  `sectionLabel` is near-duplicated in `profile.tsx` and
+  `gated-section.tsx`. Both need a guardrailed file to fix properly.
+- No way to DISCARD a dirty Profile draft, only to save it.
+- Relative strength sorts descending by e1RM, which equals descending by
+  ratio only while the denominator is constant. When per-row bodyweight
+  lands, sort by the displayed value.
+- `month-grid.ts`'s `new Date(y, m, d)` can roll back a day where DST
+  transitions at midnight. Doesn't apply in Pakistan; recorded so it isn't
+  rediscovered as a mystery elsewhere.
 
 **AyFit** — a personal-first progressive overload tracker, built by Ayhan.
 A gym app for logging workouts and measuring progressive overload.

@@ -566,7 +566,11 @@ optional label the user adds later, never something the app enforces.
 ### exercise
 - `id`
 - `name` — e.g. Flat barbell bench press, Incline dumbbell press, Wide-grip lat pulldown.
-  **GLOBALLY unique**, deliberately not unique-per-muscle (see Current state, commit 2).
+  **GLOBALLY unique**, deliberately not unique-per-muscle. One movement gets exactly
+  one row and exactly one home muscle, so its e1RM line and PR history can never
+  fragment across duplicate rows. Consequence: if a lift feels like it belongs to two
+  muscles, pick one — close-grip bench is filed under triceps; conventional and sumo
+  deadlifts under back > lower back, while the RDL family sits under hamstrings.
 - `muscle_id` — primary muscle worked
 - `movement_group` — nullable text, populated for **back only**; NULL for every other
   muscle. Four permitted values, enforced by a named CHECK constraint
@@ -787,7 +791,15 @@ OUT (roadmap):
   join. Without it, a failing filter nulls the embed instead of
   excluding the row, silently including non-matching top-level rows.
   (Caught in an ad-hoc verification script during Volume work — the
-  shipped `getVolumeByMuscle` already used `!inner` correctly.)
+  shipped `getVolumeByMuscle` already used `!inner` correctly.) **One
+  deliberate exception:** `getLastLoggedSetsForMuscle` embeds `workout_set`
+  WITHOUT `!inner`, because a never-logged exercise must still appear in
+  the list — `!inner` would drop it entirely. The `is_warmup` filter is a
+  separate embedded filter param, which PostgREST places inside the
+  lateral subquery's WHERE, so it applies BEFORE the embedded limit and a
+  trailing warm-up cannot surface as the last logged set. Same table,
+  opposite requirement from `relative-strength-repo.ts`'s
+  `exercise_favourite!inner` — both deliberate.
 - Don't rely on `FlatList`'s `initialScrollIndex` (or a forwarded
   `onContentSizeChange`) inside a `Modal`. VirtualizedList drives both off
   its `_onContentSizeChange`, which react-native-web wires to the content
@@ -980,8 +992,8 @@ OUT (roadmap):
   even where the source property writes `| undefined` explicitly. This
   shipped a broken `ProfileFields` in `e92ed58` and was fixed in `d760ba0`
   with a hand-written type. Verified with a minimal repro.
-- `.upsert()` IS UNUSABLE ON ANY TABLE whose real uniqueness guard is a
-  PARTIAL unique index over a nullable `user_id` — this is a GENERAL rule,
+- **`.upsert()` is unusable on any table whose real uniqueness guard is a
+  partial unique index** over a nullable `user_id` — this is a GENERAL rule,
   not just a `profile`/`bodyweight_log` quirk (both carry their own
   table-local note on it in the Data model above, but the rule itself
   belongs here). Two independent reasons: Postgres cannot infer a partial
@@ -996,16 +1008,16 @@ OUT (roadmap):
   limit actually buys is bounded payload and latency. Whether the cap also
   applies to embedded rows is UNVERIFIED in this project and should not be
   asserted either way.
-- YOGA DOES NOT COLLAPSE ADJACENT MARGINS THE WAY CSS DOES — THEY SUM. This
-  shipped a doubled gap under Profile's identity row, fixed in `2af8bbd`.
+- **Yoga does not collapse adjacent margins the way CSS does — they sum.**
+  This shipped a doubled gap under Profile's identity row, fixed in `2af8bbd`.
   Rule: vertical spacing between two elements belongs to ONE of them, never
   to both sides of the junction. Any new section dropped into an existing
   stack must carry the same outer spacing as what it replaced, and the way
   to know is to measure the gap above and below before and after the swap.
-- THE LINT BAR CHANGED. `331721a` fixed the last pre-existing error, so
+- **The lint bar changed.** `331721a` fixed the last pre-existing error, so
   `npm run lint` now passes FULLY GREEN. The bar is no longer "no new
   errors" — it is "lint passes." Any error is new.
-- `scripts/verify-profile-utils.ts` COMPILES AND RUNS THE REAL UTIL FILES,
+- **`scripts/verify-profile-utils.ts` compiles and runs the real util files,**
   not reimplemented copies — so the "synthetic tests test a copy, not the
   shipped file" bullet above does NOT apply to
   `src/utils/{bmi,tdee,age,height,relative-strength}.ts`; those are
@@ -1014,7 +1026,7 @@ OUT (roadmap):
   then `node .tmp-verify/scripts/verify-profile-utils.js`. TS 6.0.3 needs
   `--ignoreConfig` when passing files on the CLI (TS5112). `.tmp-verify/`
   is gitignored.
-- READ AND WRITE GET DIFFERENT ERROR TREATMENT, DELIBERATELY. A failed READ
+- **Read and write get different error treatment, deliberately.** A failed READ
   swallows and falls back with no retry UI (all four Summary cards) —
   correct, because a stale or empty card asserts nothing false. A failed
   WRITE surfaces an inline error (Profile's weigh-in), because a silently
@@ -1024,8 +1036,69 @@ OUT (roadmap):
   error flag BEFORE the empty check, or a network failure renders a false
   instruction. See `relative-strength-section.tsx` and
   `caloric-maintenance-section.tsx`.
-- COMPARING A ROUNDED FLOAT TO ZERO. Profile's goal delta rounds to 1dp
+- **Comparing a rounded float to zero.** Profile's goal delta rounds to 1dp
   BEFORE the `=== 0` comparison. 0.1 is not exactly representable in binary
   floating point — unlike the old 0.5-step wheel's 0.5 — so raw subtraction
   cannot be compared to zero directly once a 0.1 step exists.
+- **Focus-based fetching, and why it is necessary.** The tab navigator keeps
+  every tab's screen MOUNTED — native `NativeTabsView.android.js` maps over
+  all tabs and `ScreenContent` calls `contentRenderer()` with no focus gate;
+  on web `TabSlot`'s `loaded` map persists and `unmountOnBlur` is off. So
+  `useEffect(..., [])` fires once ever and never again, and data logged on
+  one tab stays stale on another until the app is force-closed. That was the
+  `fd64f34` bug. The fix is `useFocusEffect` — imported from **`expo-router`**,
+  which ships its own fork, NOT from `@react-navigation/native` directly. Its
+  deps are `[effect, navigation, ...]`, so a `useCallback` keyed on state
+  re-runs on focus AND on that state changing, which is how one hook covers
+  both. Back-navigation hits this too, not just tab switches: a screen under
+  a pushed route stays mounted. Any screen that fetches uses this.
+- Two `NativeTabs` gotchas, both Android, both invisible on web (web uses
+  `app-tabs.web.tsx`, which never touches `NativeTabs`). First,
+  `labelVisibilityMode="labeled"` is required or Android collapses a 4-tab
+  bar to showing only the selected tab's label. Second, `iconColor` is a
+  **separate prop** from `labelStyle` — `labelStyle`'s nested
+  `{default, selected}` covers TEXT ONLY, and icon colour has its own prop of
+  the same shape, split internally into `iconColor`/`selectedIconColor`.
+  Styling labels and expecting icons to follow leaves icons on Android's
+  default `onSurfaceVariant` in both states. Confirmed against expo-router's
+  real type defs, not guessed.
+- expo-router's `Redirect` calls `router.replace`, NOT push — verified in
+  its source. That is what makes the single-muscle auto-skip
+  (`category/[category]/index.tsx`) safe: the picker leaves the stack, so
+  back cannot bounce forward into a screen the user never chose. A push there
+  would do exactly that.
+- **PostgREST embed shape is asymmetric,** and the declared `.returns<>()`
+  must match it. A child embedded under its parent (`workout_set` under
+  `session`) comes back as an ARRAY. A parent embedded under its child
+  (`exercise` or `session` under `workout_set`) comes back as an OBJECT.
+  Verified against the dev DB during step 5a, not inferred.
+- `referencedTable` is the correct option name for the installed
+  `@supabase/postgrest-js` 2.110.0 (`.limit(1, { referencedTable: '...' })`,
+  `.order(..., { referencedTable: '...' })`). `foreignTable` is deprecated in
+  its own type defs.
+- **EAS build config, non-obvious parts.** The `preview` profile needs
+  `"distribution": "internal"` AND `"android": { "buildType": "apk" }` set
+  explicitly — `eas build:configure`'s scaffold defaults to an AAB, which
+  cannot be sideloaded. Supabase env vars are registered in EAS's `preview`
+  environment via `eas env:set`/`eas env:create`, never committed. EAS
+  auto-generates and manages the Android keystore; no manual signing setup.
+  Android package is `com.syedayhanhabib.ayfit`.
+- Write a verification script's expected output BEFORE the implementation
+  exists — see the "synthetic tests test a COPY" bullet above, which this
+  extends. During 5c, the expected numbering for 2026-07-30 was written
+  first, against contents already independently known from 5a's run — that
+  is the assertion that could not be retrofitted to match a buggy
+  implementation. Claude Code's own synthetic expectations had to be
+  corrected twice in the same step because it had assumed per-block reset
+  instead of continuous-per-exercise numbering: the algorithm was right and
+  the test was wrong. Worth recording precisely because "the test was wrong"
+  is also how a bug gets ratified.
+- **Device-check items get recorded as a checklist and resolved in place,
+  not deleted.** Anything a browser preview cannot answer — fonts, `Modal`
+  behaviour, scroll feel, perceptual weight, Android-specific clipping,
+  accessibility font scaling — goes on a written list at the time it is
+  noticed, and the device pass marks each resolved rather than removing it.
+  That is what stops "we'll check that on device" evaporating between
+  sessions, and it means the record shows what was checked rather than what
+  quietly disappeared. Calendar's 5c checklist is the worked example.
 - (Claude Code: add rules here every time something is corrected, so mistakes don't repeat)

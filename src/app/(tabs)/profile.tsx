@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BmiSection } from '@/components/profile/bmi-section';
+import { CaloricMaintenanceSection } from '@/components/profile/caloric-maintenance-section';
 import { GatedSection } from '@/components/profile/gated-section';
 import { RelativeStrengthSection } from '@/components/profile/relative-strength-section';
 import { WeightPickerModal } from '@/components/profile/weight-picker-modal';
@@ -11,6 +12,7 @@ import { ValueChip } from '@/components/track/value-chip';
 import { WheelPickerModal } from '@/components/track/wheel-picker-modal';
 import { Wordmark } from '@/components/wordmark';
 import { MinTouchTarget, Palette, Typefaces } from '@/constants/theme';
+import { getAverageTrainedDaysPerWeek } from '@/lib/activity-repo';
 import { getBodyweightHistory, logBodyweight } from '@/lib/bodyweight-repo';
 import { getProfile, saveProfile } from '@/lib/profile-repo';
 import { getFavouriteBests, type FavouriteBest } from '@/lib/relative-strength-repo';
@@ -206,6 +208,15 @@ export default function ProfileScreen() {
   const [liftsLoadFailed, setLiftsLoadFailed] = useState(false);
   const hasLoadedLiftsOnceRef = useRef(false);
 
+  // A FOURTH copy of the same three-flag shape, for the same reason the
+  // first three are separate: an activity-level fetch failure must never
+  // blank the profile form, the bodyweight section, or the lifts list, and
+  // vice versa.
+  const [avgTrainedDaysPerWeek, setAvgTrainedDaysPerWeek] = useState<number | undefined>(undefined);
+  const [isActivityLoading, setIsActivityLoading] = useState(true);
+  const [activityLoadFailed, setActivityLoadFailed] = useState(false);
+  const hasLoadedActivityOnceRef = useRef(false);
+
   // Set only on a failed logBodyweight write, so the wheel reopens where the
   // user left off instead of making them re-scroll to the value that didn't
   // save. Cleared on the next successful write.
@@ -281,6 +292,27 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  // Same independent-chain shape as loadBodyweight/loadFavouriteBests above,
+  // for the same reason: fired alongside them in the focus effect below,
+  // NOT under Promise.all, so an activity-level failure can't touch any of
+  // the other three's loading/error state and vice versa.
+  const loadActivity = useCallback(async (isCancelled: () => boolean = () => false) => {
+    try {
+      const result = await getAverageTrainedDaysPerWeek();
+      if (isCancelled()) return;
+      setAvgTrainedDaysPerWeek(result);
+      setActivityLoadFailed(false);
+      hasLoadedActivityOnceRef.current = true;
+    } catch {
+      if (isCancelled()) return;
+      if (!hasLoadedActivityOnceRef.current) {
+        setActivityLoadFailed(true);
+      }
+    } finally {
+      if (!isCancelled()) setIsActivityLoading(false);
+    }
+  }, []);
+
   // useFocusEffect (expo-router's fork), not useEffect: the tab navigator
   // keeps this screen mounted, so a mount-only effect would never re-run on
   // return to this tab — same fix as fd64f34. Deliberately does NOT reset
@@ -338,10 +370,14 @@ export default function ProfileScreen() {
       // can't touch either of the other two's loading/error state.
       loadFavouriteBests(() => cancelled);
 
+      // Same reasoning, fourth independent chain: an activity-level failure
+      // can't touch any of the other three's loading/error state.
+      loadActivity(() => cancelled);
+
       return () => {
         cancelled = true;
       };
-    }, [loadBodyweight, loadFavouriteBests]),
+    }, [loadBodyweight, loadFavouriteBests, loadActivity]),
   );
 
   function updateDraft(patch: Partial<Draft>) {
@@ -710,14 +746,41 @@ export default function ProfileScreen() {
 
           <View style={styles.hairline} />
 
-          {/* CALORIC MAINTENANCE — gated only this commit. */}
-          <GatedSection
-            label="Caloric maintenance"
-            placeholder="–––– kcal"
-            waitingText={caloricWaitingText}
-            actionLabel={caloricActionLabel}
-            onPressAction={caloricActionLabel !== undefined ? () => setIsDetailsExpanded(true) : undefined}
-          />
+          {/* CALORIC MAINTENANCE — real card once sex, DOB, height and a
+              weigh-in are all present AND the activity-level fetch has
+              resolved. If every input is present but activity is still
+              loading, the gate renders silently (no waitingText), same as
+              relative strength's own loading window. DESIGN.md says this
+              card is HIDDEN when inputs are missing; gating instead is
+              deliberate here (BMI and relative strength both gate too, and
+              a silently-absent section can't tell you it needs your DOB)
+              — that correction is queued for 6j, not made here. */}
+          {savedHeightCm !== undefined &&
+          savedDob !== undefined &&
+          savedDraft.sex !== undefined &&
+          currentEntry !== undefined &&
+          age !== undefined ? (
+            isActivityLoading ? (
+              <GatedSection label="Caloric maintenance" placeholder="–––– kcal" waitingText={undefined} />
+            ) : (
+              <CaloricMaintenanceSection
+                sex={savedDraft.sex}
+                heightCm={savedHeightCm}
+                weightKg={currentEntry.weightKg}
+                age={age}
+                avgTrainedDaysPerWeek={avgTrainedDaysPerWeek}
+                loadFailed={activityLoadFailed}
+              />
+            )
+          ) : (
+            <GatedSection
+              label="Caloric maintenance"
+              placeholder="–––– kcal"
+              waitingText={caloricWaitingText}
+              actionLabel={caloricActionLabel}
+              onPressAction={caloricActionLabel !== undefined ? () => setIsDetailsExpanded(true) : undefined}
+            />
+          )}
 
           <View style={styles.hairline} />
 

@@ -89,6 +89,9 @@ check("calculateAge('2026-02-30', '2026-08-03')", calculateAge('2026-02-30', '20
 check("calculateBmr('male', 95, 178, 36)", calculateBmr('male', 95, 178, 36), 1887.5);
 check("calculateBmr('female', 95, 178, 36)", calculateBmr('female', 95, 178, 36), 1721.5);
 check("calculateBmr('male', 95, 178, 17)", calculateBmr('male', 95, 178, 17), 1982.5);
+// Live Profile data (male, 76.5kg, 182.9cm, age 22) — the actual values
+// reaching the screen, not a synthetic case.
+check("calculateBmr('male', 76.5, 182.9, 22)", calculateBmr('male', 76.5, 182.9, 22), 1803.125);
 
 // roundedTrainingDays
 check('roundedTrainingDays(1.0)', roundedTrainingDays(1.0), 1);
@@ -137,6 +140,11 @@ check("calculateTdee('male', 95, 178, NaN, 3.5)", calculateTdee('male', 95, 178,
   const result = calculateTdee('male', 95, 178, 18, 3.5);
   check("calculateTdee('male', 95, 178, 18, 3.5) is a number, not undefined", typeof result, 'number');
 }
+// Live Profile data — discriminates round-to-nearest-50 from floor: BMR
+// 1803.125 x activityMultiplier(1.0)'s 1.375 = 2479.297, which rounds to
+// 2500 but FLOORS to 2450. This is currently the only number in this phase
+// that reaches the screen without a test behind it.
+check("calculateTdee('male', 76.5, 182.9, 22, 1.0)", calculateTdee('male', 76.5, 182.9, 22, 1.0), 2500);
 
 // relativeStrength
 check('relativeStrength(120, 75)', relativeStrength(120, 75), 1.6);
